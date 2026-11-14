@@ -9,7 +9,8 @@ using SmartTask.BLL.Validators;
 using SmartTask.BLL.Validators.Auth;
 using SmartTask.BLL.DTOs.Tasks;
 using SmartTask.BLL.Services.Tasks;
-
+using SmartTask.BLL.DTOs.TaskComments;
+using SmartTask.BLL.Services.TaskComments;
 
 
 namespace SmartTask.BLL;
@@ -50,6 +51,21 @@ public static class DependencyInjection
         services.AddScoped<
             IValidator<UpdateTaskStatusRequest>,
             UpdateTaskStatusRequestValidator>();
+
+        services.AddScoped<
+            IValidator<CreateTaskCommentRequest>,
+            CreateTaskCommentRequestValidator>();
+
+        services.AddScoped<
+            IValidator<UpdateTaskCommentRequest>,
+            UpdateTaskCommentRequestValidator>();
+
+        services.AddScoped<
+            ITaskCommentService, TaskCommentService>();
+
+        services.AddScoped<
+            ITaskActivityService, TaskActivityService>();
+
         return services;
     }
 }
