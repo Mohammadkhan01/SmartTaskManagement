@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.Domain.Entities;
@@ -21,6 +22,26 @@ public class TaskRepository : ITaskRepository
             .FirstOrDefaultAsync(
                 t => t.Id == taskId,
                 cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> GetByProjectIdAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Tasks
+            .AsNoTracking()
+            .Where(t => t.ProjectId == projectId)
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
+    public void SetOriginalRowVersion(
+        TaskItem task,
+        byte[] rowVersion)
+    {
+        _context.Entry(task)
+            .Property(t => t.RowVersion)
+            .OriginalValue = rowVersion;
     }
 
     public void Add(TaskItem task)
