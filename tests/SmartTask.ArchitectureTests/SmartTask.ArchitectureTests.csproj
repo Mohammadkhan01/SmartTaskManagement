@@ -19,9 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\SmartTask.BLL\SmartTask.BLL.csproj" />
-    <ProjectReference Include="..\..\SmartTask.Domain\SmartTask.Domain.csproj" />
-    <ProjectReference Include="..\..\SmartTask.Common\SmartTask.Common.csproj" />
+    <ProjectReference Include="..\..\src\SmartTask.DAL\SmartTask.DAL.csproj" />
+    <ProjectReference Include="..\..\src\SmartTask.Domain\SmartTask.Domain.csproj" />
+    <ProjectReference Include="..\..\src\SmartTask.API\SmartTask.API.csproj" />
+    <ProjectReference Include="..\..\src\SmartTask.BLL\SmartTask.BLL.csproj" />
   </ItemGroup>
 
 </Project>

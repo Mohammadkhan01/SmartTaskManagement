@@ -1,0 +1,19 @@
+using SmartTask.Domain.Entities;
+
+namespace SmartTask.BLL.Interfaces.Repositories;
+
+public interface IProjectRepository
+{
+    Task<Project?> GetByIdAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Project>> GetByMemberUserIdAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
+    void Add(Project project);
+
+    void Update(Project project);
+    void SetOriginalRowVersion(Project project, byte[] rowVersion);
+}

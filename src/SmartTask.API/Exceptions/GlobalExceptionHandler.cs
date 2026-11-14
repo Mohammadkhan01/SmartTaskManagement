@@ -1,0 +1,104 @@
+
+using FluentValidation;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace SmartTask.API.Exceptions;
+
+public sealed class GlobalExceptionHandler : IExceptionHandler
+{
+    private readonly ILogger<GlobalExceptionHandler> _logger;
+
+    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
+    {
+        _logger = logger;
+    }
+
+    public async ValueTask<bool> TryHandleAsync(
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        var problem = exception switch
+        {
+            ValidationException validationException =>
+                CreateValidationProblem(validationException),
+
+            DbUpdateConcurrencyException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Concurrency conflict",
+                    Detail = "This resource was modified by another request. Reload it and try again."
+                },
+
+            UnauthorizedAccessException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Unauthorized",
+                    Detail = "Invalid email or password."
+                },
+
+            ArgumentException argumentException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Title = "Invalid request",
+                    Detail = argumentException.Message
+                },
+
+            _ => new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "Internal server error",
+                Detail = "An unexpected error occurred."
+            }
+        };
+
+        if (problem.Status == StatusCodes.Status500InternalServerError)
+        {
+            _logger.LogError(
+                exception,
+                "An unhandled exception occurred. TraceId: {TraceId}",
+                httpContext.TraceIdentifier);
+        }
+        else if (exception is DbUpdateConcurrencyException)
+        {
+            _logger.LogWarning(
+                exception,
+                "A concurrency conflict occurred. TraceId: {TraceId}",
+                httpContext.TraceIdentifier);
+        }
+
+        httpContext.Response.StatusCode = problem.Status!.Value;
+        httpContext.Response.ContentType = "application/problem+json";
+
+        problem.Extensions["traceId"] = httpContext.TraceIdentifier;
+
+        await System.Text.Json.JsonSerializer.SerializeAsync(
+            httpContext.Response.Body,
+            problem,
+            problem.GetType(),
+            cancellationToken: cancellationToken);
+
+        return true;
+    }
+
+    private static ValidationProblemDetails CreateValidationProblem(
+        ValidationException exception)
+    {
+        var errors = exception.Errors
+            .GroupBy(error => error.PropertyName)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.ErrorMessage).ToArray());
+
+        return new ValidationProblemDetails(errors)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "One or more validation errors occurred."
+        };
+    }
+}
