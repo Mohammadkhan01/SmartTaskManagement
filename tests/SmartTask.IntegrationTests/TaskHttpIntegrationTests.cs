@@ -326,9 +326,9 @@ public sealed class TaskHttpIntegrationTests
                 await concurrentContext.SaveChangesAsync();
             }
 
+           
             // Act: submit an update using the old RowVersion.
             AuthenticateAs(client, managerId);
-
             var request = new UpdateTaskRequest
             {
                 Title = "Stale Task Update",
@@ -336,14 +336,13 @@ public sealed class TaskHttpIntegrationTests
                 Priority = TaskPriority.High,
                 RowVersion = Convert.ToBase64String(originalRowVersion)
             };
-
             var response = await client.PutAsJsonAsync(
                 $"/api/tasks/{taskId}",
                 request);
 
             var responseBody = await response.Content.ReadAsStringAsync();
 
-            // Assert: the API returns HTTP 409 Problem Details.
+            // Assert: stale update returns HTTP 409 Problem Details.
             Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
             Assert.Contains("Concurrency conflict", responseBody);
             Assert.Contains("Reload it and try again", responseBody);
@@ -353,6 +352,123 @@ public sealed class TaskHttpIntegrationTests
             await CleanupAsync(options, projectId, managerId);
         }
     }
+
+    [SqlServerFact]
+    public async Task PatchTaskStatus_WithStaleRowVersion_Returns409Conflict()
+    {
+        var connectionString =
+            Environment.GetEnvironmentVariable(
+                "SMARTTASK_TEST_CONNECTION_STRING")!;
+
+        var connectionBuilder =
+            new SqlConnectionStringBuilder(connectionString);
+
+        Assert.Equal("SmartTaskTestDb", connectionBuilder.InitialCatalog);
+
+        await using var factory =
+            new ProjectTestWebApplicationFactory(connectionString);
+
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost")
+            });
+
+        var options = new DbContextOptionsBuilder<SmartTaskDbContext>()
+            .UseSqlServer(connectionString)
+            .Options;
+
+        var managerId = Guid.NewGuid().ToString();
+        var projectId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+
+        try
+        {
+            byte[] originalRowVersion;
+
+            // Arrange: create manager, project, membership, and task.
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                context.Users.Add(CreateUser(managerId));
+
+                context.Projects.Add(new Project
+                {
+                    Id = projectId,
+                    Name = "Task Status Concurrency Project",
+                    OwnerId = managerId
+                });
+
+                context.ProjectMembers.Add(new ProjectMember
+                {
+                    ProjectId = projectId,
+                    UserId = managerId,
+                    Role = ProjectMemberRole.Manager
+                });
+
+                var task = new TaskItem
+                {
+                    Id = taskId,
+                    ProjectId = projectId,
+                    Title = "Original Task",
+                    CreatedByUserId = managerId,
+                    Priority = TaskPriority.Medium
+                };
+
+                context.Tasks.Add(task);
+                await context.SaveChangesAsync();
+
+                originalRowVersion = task.RowVersion.ToArray();
+            }
+
+            // Simulate another request updating the task.
+            await using (var concurrentContext =
+                new SmartTaskDbContext(options))
+            {
+                var task = await concurrentContext.Tasks
+                    .SingleAsync(t => t.Id == taskId);
+
+                task.Title = "Updated by another request";
+
+                await concurrentContext.SaveChangesAsync();
+            }
+
+            // Act: submit a status update using the stale RowVersion.
+            AuthenticateAs(client, managerId);
+
+            var request = new UpdateTaskStatusRequest
+            {
+                Status = SmartTask.Domain.Enums.TaskStatus.InProgress,
+                RowVersion = Convert.ToBase64String(originalRowVersion)
+            };
+
+            var response = await client.PatchAsJsonAsync(
+                $"/api/tasks/{taskId}/status",
+                request);
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            // Assert: stale status update returns HTTP 409.
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Contains("Concurrency conflict", responseBody);
+            Assert.Contains("Reload it and try again", responseBody);
+            // Verify the concurrent update remains persisted.
+await using (var verificationContext = new SmartTaskDbContext(options))
+{
+    var persistedTask = await verificationContext.Tasks
+        .AsNoTracking()
+        .SingleAsync(t => t.Id == taskId);
+
+    Assert.Equal("Updated by another request", persistedTask.Title);
+}
+        }
+        finally
+        {
+            await CleanupAsync(options, projectId, managerId);
+        }
+    }
+
+
+
 
     private static ApplicationUser CreateUser(string userId)
     {

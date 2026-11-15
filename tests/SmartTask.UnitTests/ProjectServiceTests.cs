@@ -211,10 +211,12 @@ public class ProjectServiceTests
             return Task.FromResult(
                 AddedProjects.FirstOrDefault(p => p.Id == projectId));
         }
-    public void SetOriginalRowVersion(Project project, byte[] rowVersion)
-{
-    project.RowVersion = rowVersion;
-}
+        public byte[]? OriginalRowVersion { get; private set; }
+
+        public void SetOriginalRowVersion(Project project, byte[] rowVersion)
+        {
+            OriginalRowVersion = rowVersion.ToArray();
+        }
         public Task<IReadOnlyList<Project>> GetByMemberUserIdAsync(
     string userId,
     CancellationToken cancellationToken = default)
@@ -264,6 +266,9 @@ public class ProjectServiceTests
         Assert.Equal("New Name", result.Name);
         Assert.Equal("New Description", result.Description);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(
+            new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
+            _projects.OriginalRowVersion);
     }
 
     [Fact]

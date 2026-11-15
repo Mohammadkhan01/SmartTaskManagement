@@ -13,6 +13,135 @@ namespace SmartTask.IntegrationTests;
 
 public sealed class TaskCommentActivityHttpTests
 {
+
+    [SqlServerFact]
+    public async Task PutComment_WithStaleRowVersion_Returns409Conflict()
+    {
+        var connectionString =
+            Environment.GetEnvironmentVariable(
+                "SMARTTASK_TEST_CONNECTION_STRING")!;
+
+        var connectionBuilder =
+            new SqlConnectionStringBuilder(connectionString);
+
+        Assert.Equal("SmartTaskTestDb", connectionBuilder.InitialCatalog);
+
+        await using var factory =
+            new ProjectTestWebApplicationFactory(connectionString);
+
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost")
+            });
+
+        var options = new DbContextOptionsBuilder<SmartTaskDbContext>()
+            .UseSqlServer(connectionString)
+            .Options;
+
+        var memberId = Guid.NewGuid().ToString();
+        var projectId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+
+        try
+        {
+            // Arrange: create a project member and task.
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                context.Users.Add(CreateUser(memberId));
+
+                context.Projects.Add(new Project
+                {
+                    Id = projectId,
+                    Name = "Comment Concurrency Test Project",
+                    OwnerId = memberId
+                });
+
+                context.ProjectMembers.Add(new ProjectMember
+                {
+                    ProjectId = projectId,
+                    UserId = memberId,
+                    Role = ProjectMemberRole.Manager
+                });
+
+                context.Tasks.Add(new TaskItem
+                {
+                    Id = taskId,
+                    ProjectId = projectId,
+                    Title = "Comment Concurrency Test Task",
+                    CreatedByUserId = memberId,
+                    Priority = TaskPriority.Medium
+                });
+
+                await context.SaveChangesAsync();
+            }
+
+            // Create a comment through the API.
+            AuthenticateAs(client, memberId);
+
+            var createResponse = await client.PostAsJsonAsync(
+                $"/api/tasks/{taskId}/comments",
+                new CreateTaskCommentRequest
+                {
+                    Content = "Original comment."
+                });
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+            var createdComment =
+                await createResponse.Content
+                    .ReadFromJsonAsync<TaskCommentResponse>();
+
+            Assert.NotNull(createdComment);
+            Assert.False(
+                string.IsNullOrWhiteSpace(createdComment.RowVersion));
+
+            // Simulate another request updating the comment.
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                var comment = await context.TaskComments
+                    .SingleAsync(c => c.Id == createdComment.Id);
+
+                comment.Content = "Updated by concurrent request.";
+
+                await context.SaveChangesAsync();
+            }
+
+            // Submit an update using the original, now-stale RowVersion.
+            var staleUpdateResponse = await client.PutAsJsonAsync(
+                $"/api/task-comments/{createdComment.Id}",
+                new UpdateTaskCommentRequest
+                {
+                    Content = "This stale update must not be saved.",
+                    RowVersion = createdComment.RowVersion
+                });
+
+            Assert.Equal(
+                HttpStatusCode.Conflict,
+                staleUpdateResponse.StatusCode);
+
+            // Verify the concurrent update was not overwritten.
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                var persistedComment = await context.TaskComments
+                    .SingleAsync(c => c.Id == createdComment.Id);
+
+                Assert.Equal(
+                    "Updated by concurrent request.",
+                    persistedComment.Content);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(
+                options,
+                projectId,
+                taskId,
+                memberId);
+        }
+    }
+
+
     [SqlServerFact]
     public async Task CommentAndActivityEndpoints_EnforcePermissionsAndRecordHistory()
     {

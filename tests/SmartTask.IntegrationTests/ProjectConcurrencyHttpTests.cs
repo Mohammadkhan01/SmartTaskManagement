@@ -1,7 +1,9 @@
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using SmartTask.DAL.Storage;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -143,6 +145,22 @@ public sealed class ProjectConcurrencyHttpTests
             Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
             Assert.Contains("Concurrency conflict", responseBody);
             Assert.Contains("Reload it and try again", responseBody);
+
+            // Assert: the successful concurrent update remains unchanged.
+            await using (var verificationContext =
+                new SmartTaskDbContext(options))
+            {
+                var persistedProject = await verificationContext.Projects
+                    .AsNoTracking()
+                    .SingleAsync(p => p.Id == projectId);
+
+                Assert.Equal(
+                    "Updated by another request",
+                    persistedProject.Name);
+
+                Assert.Equal(ownerId, persistedProject.OwnerId);
+                Assert.False(persistedProject.IsDeleted);
+            }
         }
         finally
         {
@@ -182,9 +200,13 @@ internal sealed class ProjectTestWebApplicationFactory
     : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly string? _fileStorageRootPath;
 
-    public ProjectTestWebApplicationFactory(string connectionString)
+    public ProjectTestWebApplicationFactory(
+        string connectionString,
+        string? fileStorageRootPath = null)
     {
+        _fileStorageRootPath = fileStorageRootPath;
         var builder = new SqlConnectionStringBuilder(connectionString);
 
         if (builder.InitialCatalog != "SmartTaskTestDb")
@@ -221,6 +243,12 @@ internal sealed class ProjectTestWebApplicationFactory
 
      services.AddDbContext<SmartTaskDbContext>(options =>
          options.UseSqlServer(_connectionString));
+
+     if (!string.IsNullOrWhiteSpace(_fileStorageRootPath))
+     {
+         services.PostConfigure<FileStorageOptions>(options =>
+             options.RootPath = _fileStorageRootPath);
+     }
 
      services.AddAuthentication(options =>
              {
