@@ -55,6 +55,10 @@ public static class DependencyInjection
             UpdateTaskStatusRequestValidator>();
 
         services.AddScoped<
+            IValidator<TaskListQueryRequest>,
+            TaskListQueryRequestValidator>();
+
+        services.AddScoped<
             IValidator<CreateTaskCommentRequest>,
             CreateTaskCommentRequestValidator>();
 

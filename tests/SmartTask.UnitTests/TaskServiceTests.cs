@@ -26,7 +26,8 @@ public class TaskServiceTests
             _unitOfWork,
             new CreateTaskRequestValidator(),
             new UpdateTaskRequestValidator(),
-            new UpdateTaskStatusRequestValidator());
+            new UpdateTaskStatusRequestValidator(),
+            new SmartTask.BLL.Validators.TaskListQueryRequestValidator());
     }
 
     private void AddMember(
@@ -186,6 +187,66 @@ public class TaskServiceTests
 
         var result = await service.GetByProjectIdAsync(
             projectId,
+            "outsider-123");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetPagedByProjectIdAsync_ShouldReturnPaginationMetadata()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "member-123");
+
+        CreateTask(projectId);
+        CreateTask(projectId);
+        CreateTask(projectId);
+
+        var service = CreateService();
+
+        var result = await service.GetPagedByProjectIdAsync(
+            projectId,
+            new TaskListQueryRequest
+            {
+                PageNumber = 1,
+                PageSize = 2
+            },
+            "member-123");
+
+        Assert.NotNull(result);
+        Assert.Equal(1, result.PageNumber);
+        Assert.Equal(2, result.PageSize);
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(2, result.TotalPages);
+        Assert.Equal(2, result.Items.Count);
+        Assert.False(result.HasPreviousPage);
+        Assert.True(result.HasNextPage);
+    }
+
+    [Fact]
+    public async Task GetPagedByProjectIdAsync_ShouldRejectInvalidQuery()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "member-123");
+
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => service.GetPagedByProjectIdAsync(
+                projectId,
+                new TaskListQueryRequest { PageSize = 101 },
+                "member-123"));
+    }
+
+    [Fact]
+    public async Task GetPagedByProjectIdAsync_ShouldRejectNonMember()
+    {
+        var projectId = Guid.NewGuid();
+        var service = CreateService();
+
+        var result = await service.GetPagedByProjectIdAsync(
+            projectId,
+            new TaskListQueryRequest(),
             "outsider-123");
 
         Assert.Null(result);
@@ -450,6 +511,25 @@ public class TaskServiceTests
                 .ToList();
 
             return Task.FromResult(result);
+        }
+
+        public async Task<(IReadOnlyList<TaskItem> Items, int TotalCount)>
+            GetPagedByProjectIdAsync(
+                Guid projectId,
+                SmartTask.BLL.DTOs.Tasks.TaskListQueryRequest query,
+                CancellationToken cancellationToken = default)
+        {
+            var filtered = AddedTasks
+                .Where(t => t.ProjectId == projectId && !t.IsDeleted)
+                .ToList();
+
+            var totalCount = filtered.Count;
+            IReadOnlyList<TaskItem> items = filtered
+                .Skip((query.PageNumber - 1) * query.PageSize)
+                .Take(query.PageSize)
+                .ToList();
+
+            return (items, totalCount);
         }
 
         public void SetOriginalRowVersion(TaskItem task, byte[] rowVersion)

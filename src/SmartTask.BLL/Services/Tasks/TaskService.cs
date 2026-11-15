@@ -16,6 +16,7 @@ public class TaskService : ITaskService
     private readonly IValidator<CreateTaskRequest> _createValidator;
     private readonly IValidator<UpdateTaskRequest> _updateValidator;
     private readonly IValidator<UpdateTaskStatusRequest> _statusValidator;
+    private readonly IValidator<TaskListQueryRequest> _listQueryValidator;
 
     public TaskService(
         ITaskRepository taskRepository,
@@ -24,7 +25,8 @@ public class TaskService : ITaskService
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskRequest> createValidator,
         IValidator<UpdateTaskRequest> updateValidator,
-        IValidator<UpdateTaskStatusRequest> statusValidator)
+        IValidator<UpdateTaskStatusRequest> statusValidator,
+        IValidator<TaskListQueryRequest> listQueryValidator)
     {
         _taskRepository = taskRepository;
         _memberRepository = memberRepository;
@@ -33,6 +35,7 @@ public class TaskService : ITaskService
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _statusValidator = statusValidator;
+        _listQueryValidator = listQueryValidator;
     }
 
     public async Task<IReadOnlyList<TaskResponse>?> GetByProjectIdAsync(
@@ -60,6 +63,46 @@ public class TaskService : ITaskService
             cancellationToken);
 
         return tasks.Select(MapToResponse).ToList();
+    }
+
+    public async Task<TaskListResponse?> GetPagedByProjectIdAsync(
+        Guid projectId,
+        TaskListQueryRequest query,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (projectId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
+            return null;
+
+        var membership = await _memberRepository.GetByProjectAndUserAsync(
+            projectId, userId, cancellationToken);
+
+        if (membership is null)
+            return null;
+
+        var validationResult = await _listQueryValidator.ValidateAsync(
+            query, cancellationToken);
+
+        if (!validationResult.IsValid)
+            throw new ValidationException(validationResult.Errors);
+
+        var (items, totalCount) =
+            await _taskRepository.GetPagedByProjectIdAsync(
+                projectId, query, cancellationToken);
+
+        var totalPages = (int)(
+            ((long)totalCount + query.PageSize - 1) / query.PageSize);
+
+        return new TaskListResponse
+        {
+            Items = items.Select(MapToResponse).ToList(),
+            PageNumber = query.PageNumber,
+            PageSize = query.PageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages,
+            HasPreviousPage = query.PageNumber > 1,
+            HasNextPage = query.PageNumber < totalPages
+        };
     }
 
     public async Task<TaskResponse?> GetByIdAsync(

@@ -1,4 +1,5 @@
 
+using SmartTask.BLL.DTOs.Tasks;
 using SmartTask.Domain.Entities;
 
 namespace SmartTask.BLL.Interfaces.Repositories;
@@ -12,6 +13,12 @@ public interface ITaskRepository
     Task<IReadOnlyList<TaskItem>> GetByProjectIdAsync(
         Guid projectId,
         CancellationToken cancellationToken = default);
+
+    Task<(IReadOnlyList<TaskItem> Items, int TotalCount)>
+        GetPagedByProjectIdAsync(
+            Guid projectId,
+            TaskListQueryRequest query,
+            CancellationToken cancellationToken = default);
 
     void SetOriginalRowVersion(
         TaskItem task,

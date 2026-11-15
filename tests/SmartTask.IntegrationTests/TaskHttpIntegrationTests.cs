@@ -123,10 +123,109 @@ public sealed class TaskHttpIntegrationTests
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
             var tasks =
-                await listResponse.Content.ReadFromJsonAsync<List<TaskResponse>>();
+                await listResponse.Content.ReadFromJsonAsync<TaskListResponse>();
 
             Assert.NotNull(tasks);
-            Assert.Contains(tasks, task => task.Id == taskId);
+            Assert.Contains(tasks.Items, task => task.Id == taskId);
+            Assert.Equal(1, tasks.TotalCount);
+            Assert.Equal(1, tasks.TotalPages);
+
+            // 2a. Seed additional tasks to exercise SQL-backed query behavior.
+            var alphaTaskId = Guid.NewGuid();
+            var betaTaskId = Guid.NewGuid();
+            var gammaTaskId = Guid.NewGuid();
+
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                context.Tasks.AddRange(
+                    new TaskItem
+                    {
+                        Id = alphaTaskId,
+                        ProjectId = projectId,
+                        Title = "Alpha planning",
+                        Description = "Prepare the project plan.",
+                        Status = SmartTask.Domain.Enums.TaskStatus.ToDo,
+                        Priority = TaskPriority.Low,
+                        AssignedToUserId = memberId,
+                        CreatedByUserId = managerId,
+                        CreatedAtUtc = new DateTime(2026, 11, 10, 9, 0, 0, DateTimeKind.Utc),
+                        DueDateUtc = new DateTime(2026, 11, 16, 12, 0, 0, DateTimeKind.Utc)
+                    },
+                    new TaskItem
+                    {
+                        Id = betaTaskId,
+                        ProjectId = projectId,
+                        Title = "Beta release",
+                        Description = "Prepare the release checklist.",
+                        Status = SmartTask.Domain.Enums.TaskStatus.InProgress,
+                        Priority = TaskPriority.High,
+                        AssignedToUserId = memberId,
+                        CreatedByUserId = managerId,
+                        CreatedAtUtc = new DateTime(2026, 11, 11, 9, 0, 0, DateTimeKind.Utc),
+                        DueDateUtc = new DateTime(2026, 11, 17, 12, 0, 0, DateTimeKind.Utc)
+                    },
+                    new TaskItem
+                    {
+                        Id = gammaTaskId,
+                        ProjectId = projectId,
+                        Title = "Gamma support",
+                        Description = "Handle customer support requests.",
+                        Status = SmartTask.Domain.Enums.TaskStatus.Completed,
+                        Priority = TaskPriority.Medium,
+                        AssignedToUserId = assignedUserId,
+                        CreatedByUserId = managerId,
+                        CreatedAtUtc = new DateTime(2026, 11, 12, 9, 0, 0, DateTimeKind.Utc),
+                        DueDateUtc = new DateTime(2026, 11, 18, 12, 0, 0, DateTimeKind.Utc)
+                    });
+
+                await context.SaveChangesAsync();
+            }
+
+            // 2b. Search and combined filters execute against SQL Server.
+            var filteredResponse = await client.GetAsync(
+                $"/api/projects/{projectId}/tasks?search=release&status=InProgress&priority=High&assignedToUserId={memberId}");
+
+            Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
+
+            var filteredTasks =
+                await filteredResponse.Content.ReadFromJsonAsync<TaskListResponse>();
+
+            Assert.NotNull(filteredTasks);
+            var filteredTask = Assert.Single(filteredTasks.Items);
+            Assert.Equal(betaTaskId, filteredTask.Id);
+            Assert.Equal(1, filteredTasks.TotalCount);
+
+            // 2c. Sorting and pagination return the expected ordered page.
+            var pagedResponse = await client.GetAsync(
+                $"/api/projects/{projectId}/tasks?pageNumber=1&pageSize=2&sortBy=title&sortDescending=false");
+
+            Assert.Equal(HttpStatusCode.OK, pagedResponse.StatusCode);
+
+            var pagedTasks =
+                await pagedResponse.Content.ReadFromJsonAsync<TaskListResponse>();
+
+            Assert.NotNull(pagedTasks);
+            Assert.Equal(4, pagedTasks.TotalCount);
+            Assert.Equal(2, pagedTasks.TotalPages);
+            Assert.Equal(2, pagedTasks.Items.Count);
+            Assert.Equal(alphaTaskId, pagedTasks.Items[0].Id);
+            Assert.Equal(betaTaskId, pagedTasks.Items[1].Id);
+            Assert.False(pagedTasks.HasPreviousPage);
+            Assert.True(pagedTasks.HasNextPage);
+
+            // 2d. Due-date range filtering returns only matching tasks.
+            var dueDateResponse = await client.GetAsync(
+                $"/api/projects/{projectId}/tasks?dueDateFromUtc=2026-11-17T00:00:00Z&dueDateToUtc=2026-11-18T23:59:59Z");
+
+            Assert.Equal(HttpStatusCode.OK, dueDateResponse.StatusCode);
+
+            var dueDateTasks =
+                await dueDateResponse.Content.ReadFromJsonAsync<TaskListResponse>();
+
+            Assert.NotNull(dueDateTasks);
+            Assert.Equal(2, dueDateTasks.TotalCount);
+            Assert.Contains(dueDateTasks.Items, task => task.Id == betaTaskId);
+            Assert.Contains(dueDateTasks.Items, task => task.Id == gammaTaskId);
 
             // 3. A non-member cannot retrieve the project task list.
             AuthenticateAs(client, outsiderId);

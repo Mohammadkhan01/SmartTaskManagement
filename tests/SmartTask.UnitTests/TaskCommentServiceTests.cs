@@ -445,6 +445,25 @@ public class TaskCommentServiceTests
             return Task.FromResult(result);
         }
 
+        public async Task<(IReadOnlyList<TaskItem> Items, int TotalCount)>
+            GetPagedByProjectIdAsync(
+                Guid projectId,
+                SmartTask.BLL.DTOs.Tasks.TaskListQueryRequest query,
+                CancellationToken cancellationToken = default)
+        {
+            var filtered = AddedTasks
+                .Where(t => t.ProjectId == projectId && !t.IsDeleted)
+                .ToList();
+
+            var totalCount = filtered.Count;
+            IReadOnlyList<TaskItem> items = filtered
+                .Skip((query.PageNumber - 1) * query.PageSize)
+                .Take(query.PageSize)
+                .ToList();
+
+            return (items, totalCount);
+        }
+
         public void SetOriginalRowVersion(TaskItem task, byte[] rowVersion) { }
 
         public void Add(TaskItem task) => AddedTasks.Add(task);

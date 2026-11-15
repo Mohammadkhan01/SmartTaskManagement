@@ -9,6 +9,12 @@ public interface ITaskService
         string userId,
         CancellationToken cancellationToken = default);
 
+    Task<TaskListResponse?> GetPagedByProjectIdAsync(
+        Guid projectId,
+        TaskListQueryRequest query,
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<TaskResponse?> GetByIdAsync(
         Guid taskId,
         string userId,

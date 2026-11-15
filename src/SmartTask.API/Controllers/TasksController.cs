@@ -18,11 +18,13 @@ public sealed class TasksController : ControllerBase
     }
 
     [HttpGet("api/projects/{projectId:guid}/tasks")]
-    [ProducesResponseType(typeof(IReadOnlyList<TaskResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TaskListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<TaskResponse>>> GetByProject(
+    public async Task<ActionResult<TaskListResponse>> GetByProject(
         Guid projectId,
+        [FromQuery] TaskListQueryRequest query,
         CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -30,10 +32,8 @@ public sealed class TasksController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        var tasks = await _taskService.GetByProjectIdAsync(
-            projectId,
-            userId,
-            cancellationToken);
+        var tasks = await _taskService.GetPagedByProjectIdAsync(
+            projectId, query, userId, cancellationToken);
 
         if (tasks is null)
             return NotFound();
