@@ -14,19 +14,22 @@ public class ProjectService : IProjectService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateProjectRequest> _createValidator;
     private readonly IValidator<UpdateProjectRequest> _updateValidator;
+    private readonly IValidator<ProjectListQueryRequest> _projectListValidator;
 
     public ProjectService(
         IProjectRepository projectRepository,
         IProjectMemberRepository memberRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateProjectRequest> createValidator,
-        IValidator<UpdateProjectRequest> updateValidator)
+        IValidator<UpdateProjectRequest> updateValidator,
+        IValidator<ProjectListQueryRequest> projectListValidator)
     {
         _projectRepository = projectRepository;
         _memberRepository = memberRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _projectListValidator = projectListValidator;
     }
 
     public async Task<ProjectResponse> CreateAsync(
@@ -90,6 +93,48 @@ public class ProjectService : IProjectService
             cancellationToken);
 
         return projects.Select(MapToResponse).ToList();
+    }
+
+    public async Task<ProjectListResponse> GetPagedMyProjectsAsync(
+        string userId,
+        ProjectListQueryRequest query,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException(
+                "User ID is required.",
+                nameof(userId));
+        }
+
+        ArgumentNullException.ThrowIfNull(query);
+
+        var validationResult = await _projectListValidator.ValidateAsync(
+            query,
+            cancellationToken);
+
+        if (!validationResult.IsValid)
+        {
+            throw new ValidationException(validationResult.Errors);
+        }
+
+        var (projects, totalCount) =
+            await _projectRepository.GetPagedByMemberUserIdAsync(
+                userId,
+                query,
+                cancellationToken);
+
+        var totalPages = (int)(
+            ((long)totalCount + query.PageSize - 1) / query.PageSize);
+
+        return new ProjectListResponse
+        {
+            Items = projects.Select(MapToResponse).ToList(),
+            PageNumber = query.PageNumber,
+            PageSize = query.PageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages
+        };
     }
 
     public async Task<ProjectResponse?> GetByIdAsync(

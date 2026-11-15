@@ -13,6 +13,11 @@ public interface IProjectService
         string userId,
         CancellationToken cancellationToken = default);
 
+    Task<ProjectListResponse> GetPagedMyProjectsAsync(
+        string userId,
+        ProjectListQueryRequest query,
+        CancellationToken cancellationToken = default);
+
     Task<ProjectResponse?> GetByIdAsync(
         Guid projectId,
         string userId,

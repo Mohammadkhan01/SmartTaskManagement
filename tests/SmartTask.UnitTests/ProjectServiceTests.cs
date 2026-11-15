@@ -21,7 +21,8 @@ public class ProjectServiceTests
             _members,
             _unitOfWork,
             new CreateProjectRequestValidator(),
-            new UpdateProjectRequestValidator());
+            new UpdateProjectRequestValidator(),
+            new ProjectListQueryRequestValidator());
     }
 
     [Fact]
@@ -228,6 +229,61 @@ public class ProjectServiceTests
 
             return Task.FromResult(result);
         }
+        public Task<(IReadOnlyList<Project> Items, int TotalCount)>
+            GetPagedByMemberUserIdAsync(
+                string userId,
+                ProjectListQueryRequest query,
+                CancellationToken cancellationToken = default)
+        {
+            IEnumerable<Project> projects = AddedProjects
+                .Where(p => p.Members.Any(m => m.UserId == userId));
+
+            if (!string.IsNullOrWhiteSpace(query.Search))
+            {
+                var search = query.Search.Trim();
+
+                projects = projects.Where(p =>
+                    p.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    (p.Description != null &&
+                     p.Description.Contains(search, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (query.Status.HasValue)
+            {
+                projects = projects.Where(p => p.Status == query.Status.Value);
+            }
+
+            var totalCount = projects.Count();
+            var descending = query.SortDescending;
+
+            IOrderedEnumerable<Project> orderedProjects =
+                query.SortBy.Trim().ToLowerInvariant() switch
+                {
+                    "createdat" => descending
+                        ? projects.OrderByDescending(p => p.CreatedAtUtc)
+                        : projects.OrderBy(p => p.CreatedAtUtc),
+                    "updatedat" => descending
+                        ? projects.OrderByDescending(p => p.UpdatedAtUtc)
+                        : projects.OrderBy(p => p.UpdatedAtUtc),
+                    "name" => descending
+                        ? projects.OrderByDescending(p => p.Name)
+                        : projects.OrderBy(p => p.Name),
+                    "status" => descending
+                        ? projects.OrderByDescending(p => p.Status)
+                        : projects.OrderBy(p => p.Status),
+                    _ => projects.OrderByDescending(p => p.CreatedAtUtc)
+                };
+
+            var skip = (int)((long)(query.PageNumber - 1) * query.PageSize);
+            IReadOnlyList<Project> items = orderedProjects
+                .ThenBy(p => p.Id)
+                .Skip(skip)
+                .Take(query.PageSize)
+                .ToList();
+
+            return Task.FromResult((items, totalCount));
+        }
+
         public void Add(Project project)
         {
             AddedProjects.Add(project);

@@ -30,6 +30,9 @@ public static class DependencyInjection
         services.AddScoped<
     IValidator<UpdateProjectRequest>,
     UpdateProjectRequestValidator>();
+        services.AddScoped<
+            IValidator<ProjectListQueryRequest>,
+            ProjectListQueryRequestValidator>();
 
         // Authentication services
         services.AddScoped<IAuthService, AuthService>();

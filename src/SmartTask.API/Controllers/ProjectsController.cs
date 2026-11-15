@@ -20,9 +20,11 @@ public sealed class ProjectsController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<ProjectResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProjectListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<IReadOnlyList<ProjectResponse>>> GetMyProjects(
+    public async Task<ActionResult<ProjectListResponse>> GetMyProjects(
+        [FromQuery] ProjectListQueryRequest query,
         CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -30,8 +32,9 @@ public sealed class ProjectsController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        var projects = await _projectService.GetMyProjectsAsync(
+        var projects = await _projectService.GetPagedMyProjectsAsync(
             userId,
+            query,
             cancellationToken);
 
         return Ok(projects);

@@ -20,6 +20,27 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         Exception exception,
         CancellationToken cancellationToken)
     {
+        // Do not attempt to modify a response that has already started.
+if (httpContext.Response.HasStarted)
+{
+    _logger.LogWarning(
+        "Cannot handle exception because the response has already started. TraceId: {TraceId}",
+        httpContext.TraceIdentifier);
+
+    return false;
+}
+
+// A disconnected client may cancel the request.
+// Do not generate an error response or log it as an application failure.
+if (exception is OperationCanceledException &&
+    httpContext.RequestAborted.IsCancellationRequested)
+{
+    _logger.LogDebug(
+        "Request was cancelled by the client. TraceId: {TraceId}",
+        httpContext.TraceIdentifier);
+
+    return true;
+}
         var problem = exception switch
         {
             ValidationException validationException =>

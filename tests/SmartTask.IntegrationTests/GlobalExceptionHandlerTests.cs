@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartTask.API.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http.Features;
+
 
 namespace SmartTask.IntegrationTests;
 
@@ -128,4 +130,61 @@ public class GlobalExceptionHandlerTests
         Assert.DoesNotContain("Sensitive database concurrency details.", response);
         Assert.Contains(context.TraceIdentifier, response);
     }
+
+
+[Fact]
+public async Task TryHandleAsync_ResponseAlreadyStarted_ReturnsFalse()
+{
+    var context = new DefaultHttpContext();
+
+    context.Features.Set<IHttpResponseFeature>(
+        new StartedResponseFeature());
+
+    var handled = await CreateHandler().TryHandleAsync(
+        context,
+        new InvalidOperationException("Test exception."),
+        CancellationToken.None);
+
+    Assert.True(context.Response.HasStarted);
+    Assert.False(handled);
+}
+[Fact]
+public async Task TryHandleAsync_ClientCancellation_DoesNotWriteErrorResponse()
+{
+    using var cancellationSource = new CancellationTokenSource();
+    cancellationSource.Cancel();
+
+    var context = new DefaultHttpContext
+    {
+        RequestAborted = cancellationSource.Token
+    };
+
+    var responseBody = new MemoryStream();
+    context.Response.Body = responseBody;
+
+    var handled = await CreateHandler().TryHandleAsync(
+        context,
+        new OperationCanceledException("Request cancelled."),
+        CancellationToken.None);
+
+    Assert.True(handled);
+    //Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    Assert.Equal(0, responseBody.Length);
+}
+private sealed class StartedResponseFeature : IHttpResponseFeature
+{
+    public int StatusCode { get; set; } = 200;
+    public string? ReasonPhrase { get; set; }
+    public IHeaderDictionary Headers { get; set; } = new HeaderDictionary();
+    public Stream Body { get; set; } = new MemoryStream();
+    public bool HasStarted => true;
+
+    public void OnStarting(Func<object, Task> callback, object state)
+    {
+    }
+
+    public void OnCompleted(Func<object, Task> callback, object state)
+    {
+    }
+}
 }
