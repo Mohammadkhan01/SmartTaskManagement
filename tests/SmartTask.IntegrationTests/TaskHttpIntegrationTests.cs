@@ -526,6 +526,12 @@ await using (var verificationContext = new SmartTaskDbContext(options))
         }
 
         // Finally delete users after all dependent records are removed.
+        var notifications = await context.Notifications
+            .Where(n => userIds.Contains(n.RecipientUserId))
+            .ToListAsync();
+
+        context.Notifications.RemoveRange(notifications);
+
         var users = await context.Users
             .Where(u => userIds.Contains(u.Id))
             .ToListAsync();

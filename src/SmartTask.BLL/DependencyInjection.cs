@@ -12,7 +12,7 @@ using SmartTask.BLL.Services.Tasks;
 using SmartTask.BLL.DTOs.TaskComments;
 using SmartTask.BLL.Services.TaskComments;
 using SmartTask.BLL.Services.TaskAttachments;
-
+using SmartTask.BLL.Services.Notifications;
 
 namespace SmartTask.BLL;
 
@@ -66,6 +66,9 @@ public static class DependencyInjection
 
         services.AddScoped<
             ITaskActivityService, TaskActivityService>();
+
+        services.AddScoped<
+            INotificationService, NotificationService>();
 
         services.AddScoped<ITaskAttachmentService, TaskAttachmentService>();
 

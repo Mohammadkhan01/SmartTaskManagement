@@ -13,6 +13,7 @@ public class TaskCommentService : ITaskCommentService
     private readonly ITaskRepository _taskRepository;
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly IProjectMemberRepository _memberRepository;
+    private readonly INotificationRepository _notificationRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateTaskCommentRequest> _createValidator;
     private readonly IValidator<UpdateTaskCommentRequest> _updateValidator;
@@ -22,6 +23,7 @@ public class TaskCommentService : ITaskCommentService
         ITaskRepository taskRepository,
         IAuditLogRepository auditLogRepository,
         IProjectMemberRepository memberRepository,
+        INotificationRepository notificationRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskCommentRequest> createValidator,
         IValidator<UpdateTaskCommentRequest> updateValidator)
@@ -30,6 +32,7 @@ public class TaskCommentService : ITaskCommentService
         _taskRepository = taskRepository;
         _auditLogRepository = auditLogRepository;
         _memberRepository = memberRepository;
+        _notificationRepository = notificationRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
@@ -119,6 +122,20 @@ public class TaskCommentService : ITaskCommentService
 
         _commentRepository.Add(comment);
         AddActivity(taskId, userId, "CommentCreated", comment.Id);
+
+        if (task.AssignedToUserId is not null &&
+            task.AssignedToUserId != userId)
+        {
+            _notificationRepository.Add(new Notification
+            {
+                RecipientUserId = task.AssignedToUserId,
+                Type = "TaskCommentAdded",
+                Title = "New comment on your task",
+                Message = $"A new comment was added to '{task.Title}'.",
+                RelatedEntityId = task.Id,
+                RelatedEntityType = "Task"
+            });
+        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

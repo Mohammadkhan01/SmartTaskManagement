@@ -14,6 +14,7 @@ public class TaskServiceTests
 {
     private readonly FakeTaskRepository _tasks = new();
     private readonly FakeProjectMemberRepository _members = new();
+    private readonly FakeNotificationRepository _notifications = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
 
     private TaskService CreateService()
@@ -21,6 +22,7 @@ public class TaskServiceTests
         return new TaskService(
             _tasks,
             _members,
+            _notifications,
             _unitOfWork,
             new CreateTaskRequestValidator(),
             new UpdateTaskRequestValidator(),
@@ -88,6 +90,10 @@ public class TaskServiceTests
         Assert.Equal("manager-123", result.CreatedByUserId);
 
         Assert.Single(_tasks.AddedTasks);
+        var notification = Assert.Single(_notifications.AddedNotifications);
+        Assert.Equal("member-123", notification.RecipientUserId);
+        Assert.Equal("TaskAssigned", notification.Type);
+        Assert.Equal(result.Id, notification.RelatedEntityId);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
@@ -249,6 +255,39 @@ public class TaskServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ShouldNotifyNewAssigneeOnReassignment()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "new-member-123");
+
+        var task = CreateTask(projectId, "old-member-123");
+        var rowVersion = Convert.ToBase64String(task.RowVersion);
+
+        var result = await CreateService().UpdateAsync(
+            task.Id,
+            new UpdateTaskRequest
+            {
+                Title = task.Title,
+                Description = task.Description,
+                Priority = task.Priority,
+                AssignedToUserId = "new-member-123",
+                RowVersion = rowVersion
+            },
+            "manager-123");
+
+        Assert.NotNull(result);
+        Assert.Equal("new-member-123", result.AssignedToUserId);
+
+        var notification = Assert.Single(_notifications.AddedNotifications);
+        Assert.Equal("new-member-123", notification.RecipientUserId);
+        Assert.Equal("TaskReassigned", notification.Type);
+        Assert.Equal(task.Id, notification.RelatedEntityId);
+        Assert.Equal("Task", notification.RelatedEntityType);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ShouldRejectNonManager()
     {
         var projectId = Guid.NewGuid();
@@ -295,6 +334,10 @@ public class TaskServiceTests
 
         Assert.NotNull(result);
         Assert.Equal(TaskStatus.InProgress, result.Status);
+        var notification = Assert.Single(_notifications.AddedNotifications);
+        Assert.Equal("manager-123", notification.RecipientUserId);
+        Assert.Equal("TaskStatusChanged", notification.Type);
+        Assert.Equal(task.Id, notification.RelatedEntityId);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
@@ -344,6 +387,7 @@ public class TaskServiceTests
 
         Assert.NotNull(result);
         Assert.Equal(TaskStatus.Completed, result.Status);
+        Assert.Empty(_notifications.AddedNotifications);
     }
 
     [Fact]
@@ -457,6 +501,75 @@ public class TaskServiceTests
         public void Remove(ProjectMember member)
         {
             AddedMembers.Remove(member);
+        }
+    }
+
+    private sealed class FakeNotificationRepository : INotificationRepository
+    {
+        public List<Notification> AddedNotifications { get; } = [];
+
+        public void Add(Notification notification)
+        {
+            AddedNotifications.Add(notification);
+        }
+
+        public Task<Notification?> GetByIdForRecipientAsync(
+            Guid notificationId,
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedNotifications.FirstOrDefault(n =>
+                    n.Id == notificationId &&
+                    n.RecipientUserId == recipientUserId));
+        }
+
+        public Task<IReadOnlyList<Notification>> GetPagedByRecipientAsync(
+            string recipientUserId,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<Notification> result = AddedNotifications
+                .Where(n => n.RecipientUserId == recipientUserId)
+                .ToList();
+
+            return Task.FromResult(result);
+        }
+
+        public Task<int> CountByRecipientAsync(
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedNotifications.Count(n => n.RecipientUserId == recipientUserId));
+        }
+
+        public Task<int> CountUnreadByRecipientAsync(
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedNotifications.Count(n =>
+                    n.RecipientUserId == recipientUserId && !n.IsRead));
+        }
+
+        public Task<int> MarkAllAsReadAsync(
+            string recipientUserId,
+            DateTime readAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var notifications = AddedNotifications
+                .Where(n => n.RecipientUserId == recipientUserId && !n.IsRead)
+                .ToList();
+
+            foreach (var notification in notifications)
+            {
+                notification.IsRead = true;
+                notification.ReadAtUtc = readAtUtc;
+            }
+
+            return Task.FromResult(notifications.Count);
         }
     }
 

@@ -14,6 +14,7 @@ public class TaskCommentServiceTests
     private readonly FakeTaskRepository _tasks = new();
     private readonly FakeAuditLogRepository _auditLogs = new();
     private readonly FakeProjectMemberRepository _members = new();
+    private readonly FakeNotificationRepository _notifications = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
 
     private TaskCommentService CreateService()
@@ -23,18 +24,22 @@ public class TaskCommentServiceTests
             _tasks,
             _auditLogs,
             _members,
+            _notifications,
             _unitOfWork,
             new CreateTaskCommentRequestValidator(),
             new UpdateTaskCommentRequestValidator());
     }
 
-    private TaskItem CreateTask(Guid? projectId = null)
+    private TaskItem CreateTask(
+        Guid? projectId = null,
+        string? assignedToUserId = null)
     {
         var task = new TaskItem
         {
             ProjectId = projectId ?? Guid.NewGuid(),
             Title = "Test task",
-            CreatedByUserId = "manager-123"
+            CreatedByUserId = "manager-123",
+            AssignedToUserId = assignedToUserId
         };
 
         _tasks.AddedTasks.Add(task);
@@ -100,7 +105,7 @@ public class TaskCommentServiceTests
     [Fact]
     public async Task CreateAsync_ShouldCreateCommentForProjectMember()
     {
-        var task = CreateTask();
+        var task = CreateTask(assignedToUserId: "assignee-123");
         AddMember(task.ProjectId, "member-123");
 
         var result = await CreateService().CreateAsync(
@@ -117,6 +122,13 @@ public class TaskCommentServiceTests
         Assert.Equal("New comment", result.Content);
         Assert.Single(_comments.AddedComments);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+
+        var notification = Assert.Single(_notifications.AddedNotifications);
+        Assert.Equal("assignee-123", notification.RecipientUserId);
+        Assert.Equal("TaskCommentAdded", notification.Type);
+        Assert.Equal(task.Id, notification.RelatedEntityId);
+        Assert.Equal("Task", notification.RelatedEntityType);
+        Assert.DoesNotContain("New comment", notification.Message);
 
         var activity = Assert.Single(_auditLogs.AddedLogs);
         Assert.Equal("CommentCreated", activity.Action);
@@ -138,7 +150,25 @@ public class TaskCommentServiceTests
 
         Assert.Null(result);
         Assert.Empty(_comments.AddedComments);
+        Assert.Empty(_notifications.AddedNotifications);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldNotNotifyAssigneeWhenTheyComment()
+    {
+        var task = CreateTask(assignedToUserId: "member-123");
+        AddMember(task.ProjectId, "member-123");
+
+        var result = await CreateService().CreateAsync(
+            task.Id,
+            new CreateTaskCommentRequest { Content = "My own comment" },
+            "member-123");
+
+        Assert.NotNull(result);
+        Assert.Single(_comments.AddedComments);
+        Assert.Empty(_notifications.AddedNotifications);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -258,6 +288,79 @@ public class TaskCommentServiceTests
         Assert.False(result);
         Assert.False(comment.IsDeleted);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+
+    private sealed class FakeNotificationRepository : INotificationRepository
+    {
+        public List<Notification> AddedNotifications { get; } = [];
+
+        public void Add(Notification notification)
+        {
+            AddedNotifications.Add(notification);
+        }
+
+        public Task<Notification?> GetByIdForRecipientAsync(
+            Guid notificationId,
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(AddedNotifications.FirstOrDefault(
+                n => n.Id == notificationId &&
+                     n.RecipientUserId == recipientUserId));
+        }
+
+        public Task<IReadOnlyList<Notification>> GetPagedByRecipientAsync(
+            string recipientUserId,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<Notification> result = AddedNotifications
+                .Where(n => n.RecipientUserId == recipientUserId)
+                .OrderByDescending(n => n.CreatedAtUtc)
+                .ThenByDescending(n => n.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            return Task.FromResult(result);
+        }
+
+        public Task<int> CountByRecipientAsync(
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(AddedNotifications.Count(
+                n => n.RecipientUserId == recipientUserId));
+        }
+
+        public Task<int> CountUnreadByRecipientAsync(
+            string recipientUserId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(AddedNotifications.Count(
+                n => n.RecipientUserId == recipientUserId && !n.IsRead));
+        }
+
+        public Task<int> MarkAllAsReadAsync(
+            string recipientUserId,
+            DateTime readAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            var notifications = AddedNotifications
+                .Where(n => n.RecipientUserId == recipientUserId && !n.IsRead)
+                .ToList();
+
+            foreach (var notification in notifications)
+            {
+                notification.IsRead = true;
+                notification.ReadAtUtc = readAtUtc;
+                notification.UpdatedAtUtc = readAtUtc;
+            }
+
+            return Task.FromResult(notifications.Count);
+        }
     }
 
     private sealed class FakeTaskCommentRepository : ITaskCommentRepository

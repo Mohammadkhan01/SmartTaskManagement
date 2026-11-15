@@ -11,6 +11,7 @@ public class TaskService : ITaskService
 {
     private readonly ITaskRepository _taskRepository;
     private readonly IProjectMemberRepository _memberRepository;
+    private readonly INotificationRepository _notificationRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateTaskRequest> _createValidator;
     private readonly IValidator<UpdateTaskRequest> _updateValidator;
@@ -19,6 +20,7 @@ public class TaskService : ITaskService
     public TaskService(
         ITaskRepository taskRepository,
         IProjectMemberRepository memberRepository,
+        INotificationRepository notificationRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskRequest> createValidator,
         IValidator<UpdateTaskRequest> updateValidator,
@@ -26,6 +28,7 @@ public class TaskService : ITaskService
     {
         _taskRepository = taskRepository;
         _memberRepository = memberRepository;
+        _notificationRepository = notificationRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
@@ -152,6 +155,19 @@ public class TaskService : ITaskService
 
         _taskRepository.Add(task);
 
+        if (assignedToUserId is not null && assignedToUserId != userId)
+        {
+            _notificationRepository.Add(new Notification
+            {
+                RecipientUserId = assignedToUserId,
+                Type = "TaskAssigned",
+                Title = "Task assigned to you",
+                Message = $"You have been assigned the task '{task.Title}'.",
+                RelatedEntityId = task.Id,
+                RelatedEntityType = "Task"
+            });
+        }
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return MapToResponse(task);
@@ -197,6 +213,7 @@ public class TaskService : ITaskService
         }
 
         var assignedToUserId = request.AssignedToUserId?.Trim();
+        var previousAssigneeId = task.AssignedToUserId;
 
         if (assignedToUserId is not null)
         {
@@ -222,6 +239,23 @@ public class TaskService : ITaskService
         task.Priority = request.Priority;
         task.AssignedToUserId = assignedToUserId;
         task.DueDateUtc = request.DueDateUtc;
+
+        if (assignedToUserId is not null &&
+            assignedToUserId != previousAssigneeId &&
+            assignedToUserId != userId)
+        {
+            _notificationRepository.Add(new Notification
+            {
+                RecipientUserId = assignedToUserId,
+                Type = previousAssigneeId is null
+                    ? "TaskAssigned"
+                    : "TaskReassigned",
+                Title = "Task assigned to you",
+                Message = $"You have been assigned the task '{task.Title}'.",
+                RelatedEntityId = task.Id,
+                RelatedEntityType = "Task"
+            });
+        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -275,11 +309,27 @@ public class TaskService : ITaskService
             throw new ValidationException(validationResult.Errors);
         }
 
+        var previousStatus = task.Status;
+
         _taskRepository.SetOriginalRowVersion(
             task,
             Convert.FromBase64String(request.RowVersion));
 
         task.Status = request.Status;
+
+        if (task.Status != previousStatus &&
+            task.CreatedByUserId != userId)
+        {
+            _notificationRepository.Add(new Notification
+            {
+                RecipientUserId = task.CreatedByUserId,
+                Type = "TaskStatusChanged",
+                Title = "Task status updated",
+                Message = $"The status of '{task.Title}' changed to {task.Status}.",
+                RelatedEntityId = task.Id,
+                RelatedEntityType = "Task"
+            });
+        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
