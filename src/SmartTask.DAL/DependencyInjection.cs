@@ -7,6 +7,9 @@ using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.DAL.Identity;
 using SmartTask.DAL.Persistence;
 using SmartTask.DAL.Persistence.Repositories;
+using SmartTask.BLL.Interfaces.Services;
+using SmartTask.DAL.Storage;
+
 
 namespace SmartTask.DAL;
 
@@ -55,10 +58,13 @@ public static class DependencyInjection
         services.AddScoped<IProjectMemberRepository, ProjectMemberRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<ITaskCommentRepository, TaskCommentRepository>();
+        services.AddScoped<ITaskAttachmentRepository, TaskAttachmentRepository>();
         services.AddScoped<IUserAccountRepository, UserAccountRepository>();
         // Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IFileStorageService, LocalFileStorageService>();
+        
         return services;
     }
 }

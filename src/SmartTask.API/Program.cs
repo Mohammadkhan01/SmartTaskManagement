@@ -3,10 +3,18 @@ using SmartTask.BLL;
 using SmartTask.API.Exceptions;
 using SmartTask.API.Authentication;
 using SmartTask.DAL.Identity;
+using Microsoft.Extensions.Options;
+using SmartTask.DAL.Storage;
 
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.Configure<FileStorageOptions>(options =>
+{
+    options.RootPath = Path.Combine(
+        builder.Environment.ContentRootPath,
+        "App_Data",
+        "TaskAttachments");
+});
 // Register services.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

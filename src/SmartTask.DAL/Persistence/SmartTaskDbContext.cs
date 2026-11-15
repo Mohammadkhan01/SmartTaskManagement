@@ -23,6 +23,8 @@ public class SmartTaskDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
 
+    public DbSet<TaskAttachment> TaskAttachments => Set<TaskAttachment>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
