@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SmartTask.BLL.DTOs.TaskAttachments;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
+using SmartTask.Common.Constants;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
 
@@ -156,7 +157,7 @@ public class TaskAttachmentService : ITaskAttachmentService
         {
             _attachmentRepository.Add(attachment);
 
-            AddActivity(taskId, userId, "AttachmentUploaded", attachment.Id);
+            AddActivity(taskId, userId, AuditActions.AttachmentUploaded, attachment.Id);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
@@ -211,118 +212,64 @@ public class TaskAttachmentService : ITaskAttachmentService
         string userId,
         CancellationToken cancellationToken = default)
     {
-        if (attachmentId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
-        {
-            return null;
-        }
-
-        var attachment = await _attachmentRepository.GetByIdAsync(
+        var access = await FindAccessibleAttachmentAsync(
             attachmentId,
+            userId,
             cancellationToken);
 
-        if (attachment is null)
+        return access is null ? null : MapToResponse(access.Value.Attachment);
+    }
+
+    public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
+        Guid attachmentId,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await FindAccessibleAttachmentAsync(
+            attachmentId,
+            userId,
+            cancellationToken);
+
+        if (access is null)
         {
             return null;
         }
 
-        var task = await _taskRepository.GetByIdAsync(
-            attachment.TaskId,
+        var attachment = access.Value.Attachment;
+
+        var stream = await _fileStorage.OpenReadAsync(
+            attachment.StoredFileName,
             cancellationToken);
 
-        if (task is null || !await IsMemberAsync(
-                task.ProjectId, userId, cancellationToken))
+        if (stream is null)
         {
             return null;
         }
 
-        return MapToResponse(attachment);
+        return new TaskAttachmentDownload
+        {
+            Stream = stream,
+            OriginalFileName = attachment.OriginalFileName,
+            ContentType = attachment.ContentType
+        };
     }
-
-   
-public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
-    Guid attachmentId,
-    string userId,
-    CancellationToken cancellationToken = default)
-{
-    if (attachmentId == Guid.Empty ||
-        string.IsNullOrWhiteSpace(userId))
-    {
-        return null;
-    }
-
-    var attachment = await _attachmentRepository.GetByIdAsync(
-        attachmentId,
-        cancellationToken);
-
-    if (attachment is null)
-    {
-        return null;
-    }
-
-    var task = await _taskRepository.GetByIdAsync(
-        attachment.TaskId,
-        cancellationToken);
-
-    if (task is null || !await IsMemberAsync(
-            task.ProjectId, userId, cancellationToken))
-    {
-        return null;
-    }
-
-    var stream = await _fileStorage.OpenReadAsync(
-        attachment.StoredFileName,
-        cancellationToken);
-
-    if (stream is null)
-    {
-        return null;
-    }
-
-    return new TaskAttachmentDownload
-    {
-        Stream = stream,
-        OriginalFileName = attachment.OriginalFileName,
-        ContentType = attachment.ContentType
-    };
-}
 
     public async Task<bool> DeleteAsync(
         Guid attachmentId,
         string userId,
         CancellationToken cancellationToken = default)
     {
-        if (attachmentId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
-        {
-            return false;
-        }
-
-        var attachment = await _attachmentRepository.GetByIdAsync(
+        var access = await FindAccessibleAttachmentAsync(
             attachmentId,
-            cancellationToken);
-
-        if (attachment is null)
-        {
-            return false;
-        }
-
-        var task = await _taskRepository.GetByIdAsync(
-            attachment.TaskId,
-            cancellationToken);
-
-        if (task is null)
-        {
-            return false;
-        }
-
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            task.ProjectId,
             userId,
             cancellationToken);
 
-        if (membership is null)
+        if (access is null)
         {
             return false;
         }
+
+        var (attachment, membership) = access.Value;
 
         var isUploader = attachment.UploadedByUserId == userId;
         var isManager = membership.ProjectRole == ProjectMemberRole.Manager;
@@ -335,7 +282,7 @@ public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
         attachment.IsDeleted = true;
         attachment.DeletedAtUtc = DateTime.UtcNow;
 
-        AddActivity(task.Id, userId, "AttachmentDeleted", attachment.Id);
+        AddActivity(attachment.TaskId, userId, AuditActions.AttachmentDeleted, attachment.Id);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -354,6 +301,44 @@ public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
         }
 
         return true;
+    }
+
+    // Returns null when the attachment, its task, or the caller's project membership is missing,
+    // so callers respond 404 without revealing whether the attachment exists.
+    private async Task<(TaskAttachment Attachment, ProjectMember Membership)?> FindAccessibleAttachmentAsync(
+        Guid attachmentId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (attachmentId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
+        {
+            return null;
+        }
+
+        var attachment = await _attachmentRepository.GetByIdAsync(
+            attachmentId,
+            cancellationToken);
+
+        if (attachment is null)
+        {
+            return null;
+        }
+
+        var task = await _taskRepository.GetByIdAsync(
+            attachment.TaskId,
+            cancellationToken);
+
+        if (task is null)
+        {
+            return null;
+        }
+
+        var membership = await _memberRepository.GetByProjectAndUserAsync(
+            task.ProjectId,
+            userId,
+            cancellationToken);
+
+        return membership is null ? null : (attachment, membership);
     }
 
     private async Task<bool> IsMemberAsync(

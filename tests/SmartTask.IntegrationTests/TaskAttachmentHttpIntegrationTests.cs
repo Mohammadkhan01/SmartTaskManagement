@@ -130,6 +130,26 @@ public sealed class TaskAttachmentHttpIntegrationTests
 
             var attachmentId = uploadedAttachment.Id;
 
+            // An empty file is rejected with a ProblemDetails body.
+            using var emptyForm = new MultipartFormDataContent();
+            using var emptyContent = new ByteArrayContent([]);
+
+            emptyContent.Headers.ContentType =
+                new MediaTypeHeaderValue("application/pdf");
+
+            emptyForm.Add(emptyContent, "file", "empty.pdf");
+
+            var emptyUploadResponse = await client.PostAsync(
+                $"/api/v1/tasks/{taskId}/attachments",
+                emptyForm);
+
+            Assert.Equal(
+                HttpStatusCode.BadRequest,
+                emptyUploadResponse.StatusCode);
+            Assert.Equal(
+                "application/problem+json",
+                emptyUploadResponse.Content.Headers.ContentType?.MediaType);
+
             // 2. A project member can list task attachments.
             var listResponse = await client.GetAsync(
                 $"/api/v1/tasks/{taskId}/attachments");
@@ -163,6 +183,10 @@ public sealed class TaskAttachmentHttpIntegrationTests
             Assert.Equal(
                 "attachment",
                 downloadResponse.Content.Headers.ContentDisposition?.DispositionType);
+
+            Assert.Equal(
+                "nosniff",
+                Assert.Single(downloadResponse.Headers.GetValues("X-Content-Type-Options")));
 
             // 5. A non-member cannot access attachment endpoints.
             AuthenticateAs(client, outsiderId);

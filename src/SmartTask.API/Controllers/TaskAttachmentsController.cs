@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.TaskAttachments;
 using SmartTask.BLL.Interfaces.Services;
@@ -32,13 +32,16 @@ public sealed class TaskAttachmentsController : ControllerBase
         IFormFile? file,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         if (file is null || file.Length == 0)
-            return BadRequest("A non-empty file is required.");
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid request",
+                detail: "A non-empty file is required.");
 
         await using var stream = file.OpenReadStream();
 
@@ -67,9 +70,9 @@ public sealed class TaskAttachmentsController : ControllerBase
         Guid taskId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var attachments = await _attachmentService.GetByTaskIdAsync(
@@ -91,9 +94,9 @@ public sealed class TaskAttachmentsController : ControllerBase
         Guid attachmentId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var attachment = await _attachmentService.GetByIdAsync(
@@ -107,35 +110,32 @@ public sealed class TaskAttachmentsController : ControllerBase
         return Ok(attachment);
     }
 
+    [HttpGet("api/v1/task-attachments/{attachmentId:guid}/download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Download(
+        Guid attachmentId,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
 
-[HttpGet("api/v1/task-attachments/{attachmentId:guid}/download")]
-[ProducesResponseType(StatusCodes.Status200OK)]
-[ProducesResponseType(StatusCodes.Status401Unauthorized)]
-[ProducesResponseType(StatusCodes.Status404NotFound)]
-public async Task<IActionResult> Download(
-    Guid attachmentId,
-    CancellationToken cancellationToken)
-{
-    var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null)
+            return Unauthorized();
 
-    if (string.IsNullOrWhiteSpace(userId))
-        return Unauthorized();
+        var download = await _attachmentService.OpenDownloadAsync(
+            attachmentId,
+            userId,
+            cancellationToken);
 
-    var download = await _attachmentService.OpenDownloadAsync(
-        attachmentId,
-        userId,
-        cancellationToken);
+        if (download is null)
+            return NotFound();
 
-    if (download is null)
-        return NotFound();
-
-    return File(
-        download.Stream,
-        download.ContentType,
-        download.OriginalFileName);
-}
-
-
+        return File(
+            download.Stream,
+            download.ContentType,
+            download.OriginalFileName);
+    }
 
     [HttpDelete("api/v1/task-attachments/{attachmentId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -145,9 +145,9 @@ public async Task<IActionResult> Download(
         Guid attachmentId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var deleted = await _attachmentService.DeleteAsync(
