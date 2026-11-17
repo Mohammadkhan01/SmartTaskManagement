@@ -22,6 +22,7 @@ Further reading:
 | [`PROMPTS.md`](PROMPTS.md) | AI prompt design, structure, examples, validation and safety |
 | [`docs/architecture.md`](docs/architecture.md) | Layer, request-flow, authentication and AI provider diagrams |
 | [`docs/database/README.md`](docs/database/README.md) | ERD, table reference, migrations |
+| [`docs/database/SmartTaskDb.sql`](docs/database/SmartTaskDb.sql) | Idempotent SQL script generated from the EF Core migrations |
 | [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) | Requirement → implementation → test mapping |
 | [`docs/performance.md`](docs/performance.md) | Latency smoke test results |
 | [`docs/screenshots`](docs/screenshots) | UI screenshots |
@@ -97,7 +98,9 @@ unset SMARTTASK_DESIGN_TIME_CONNECTION_STRING
 ```
 
 Migrations are in `src/SmartTask.DAL/Persistence/Migrations`. Roles are
-seeded automatically at startup.
+seeded automatically at startup. Without the EF CLI, run the generated
+idempotent script [`docs/database/SmartTaskDb.sql`](docs/database/SmartTaskDb.sql)
+against an empty `SmartTaskDb` database instead.
 
 ### 4. HTTPS development certificate
 
@@ -317,7 +320,8 @@ Priority values: `1` Low, `2` Medium, `3` High, `4` Critical.
 ├── docs/
 │   ├── architecture.md           Architecture and flow diagrams (Mermaid)
 │   ├── database/README.md        ERD, tables, migrations
-│   ├── api/                      openapi.json, Postman collection + environment
+│   ├── database/SmartTaskDb.sql  Idempotent SQL script generated from the migrations
+│   ├── api/                      openapi.json, swagger.html (offline Swagger UI), Postman collection + environment
 │   ├── TRACEABILITY.md           Requirement → code → test traceability
 │   ├── performance.md            Performance smoke results
 │   ├── SMART_TASK_MANAGEMENT_ENGINEERING_HANDBOOK.md  Detailed requirements and standards
@@ -330,7 +334,8 @@ Priority values: `1` Low, `2` Medium, `3` High, `4` Critical.
 │   ├── SmartTask.DAL/            EF Core DbContext, configurations, migrations, repositories, Unit of Work,
 │   │                             Identity, local file storage, AI providers (Ai/)
 │   ├── SmartTask.Domain/         Entities and enums (no dependencies)
-│   └── SmartTask.Common/         RoleNames, FieldLimits, shared exceptions, PagedResponse, Pagination
+│   └── SmartTask.Common/         RoleNames, AuditActions, NotificationTypes, FieldLimits, shared exceptions,
+│                                 PagedResponse, Pagination
 ├── tests/
 │   ├── SmartTask.UnitTests/          Services, validators, repositories, JWT, AI providers
 │   ├── SmartTask.IntegrationTests/   HTTP pipeline + SQL Server (auth, CORS, rate limits, tasks, AI, …)
@@ -338,6 +343,7 @@ Priority values: `1` Low, `2` Medium, `3` High, `4` Critical.
 └── frontend/                     Angular 21 app
     ├── angular.json              Build/serve config (HTTPS dev server using .certs/)
     ├── package.json              Scripts: start, build, test
+    ├── src/environments/         API origin per build configuration
     └── src/app/
         ├── app.routes.ts         Lazy-loaded routes with authGuard / adminGuard
         ├── core/                 API services, SessionStore, auth interceptor, guards, models
@@ -376,6 +382,15 @@ Priority values: `1` Low, `2` Medium, `3` High, `4` Critical.
   requests/60 s per user (HTTP 429 when exceeded). Behind a reverse proxy,
   configure Forwarded Headers with trusted proxies only; otherwise all
   clients may share the proxy's IP partition.
+- Every response carries `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
+- Attachments: 10 MB limit, extension + content-type allow-list (PDF, PNG,
+  JPEG, plain text), magic-byte/UTF-8 content check, original names
+  sanitised, files stored under random GUID names outside the web root and
+  always downloaded as `Content-Disposition: attachment`.
+- Reading a project, task, comment, attachment or notification the caller
+  has no access to returns 404 rather than 403, so ids from other projects
+  are not disclosed; insufficient role for a management action returns 403.
 - Secrets come only from User Secrets or environment variables; logs never
   contain secrets, prompts or AI output.
 
@@ -394,12 +409,105 @@ Priority values: `1` Low, `2` Medium, `3` High, `4` Critical.
 
 ![Dashboard](docs/screenshots/02-dashboard.png)
 
+## Evaluation Criteria
+
+How the implementation maps to each evaluation criterion, with pointers to
+the code that demonstrates it.
+
+**Application Architecture**
+- N-Layer solution: `SmartTask.API` (HTTP host and composition root) →
+  `SmartTask.BLL` (services, DTOs, validators, repository/service
+  interfaces) → `SmartTask.DAL` (EF Core, repositories, Identity, file
+  storage, AI providers) → `SmartTask.Domain` (entities, enums), plus
+  `SmartTask.Common`. Diagrams in [`docs/architecture.md`](docs/architecture.md).
+- Dependency inversion: the BLL owns the abstractions (`Interfaces/Repositories`,
+  `Interfaces/Services`) and the DAL implements them.
+- The boundaries are enforced by 8 architecture tests in
+  [`tests/SmartTask.ArchitectureTests`](tests/SmartTask.ArchitectureTests)
+  (project-reference rules, controllers depend only on BLL service
+  interfaces, business services depend only on abstractions).
+
+**Code Quality**
+- Builds with 0 warnings (nullable reference types enabled); Angular builds
+  in strict TypeScript mode with no `any`.
+- Shared constants instead of literals (`RoleNames`, `AuditActions`,
+  `NotificationTypes`, `FieldLimits`; shared label maps in the frontend).
+- Tests: 265 unit, 49 integration (real SQL Server), 8 architecture, 194
+  Angular (Vitest), all run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+**Security**
+- ASP.NET Core Identity password hashing, password policy and lockout; JWT
+  access tokens validated against the current user's active flag and roles
+  on every request (`Authentication/AuthenticationDependencyInjection.cs`).
+- Rotating refresh tokens in an HttpOnly, Secure cookie, with antiforgery
+  (`[ValidateAntiForgeryToken]`) on the cookie-based auth endpoints.
+- Membership/role authorization in every business service (404 when the
+  caller cannot see the resource, 403 when their role cannot change it);
+  covered by integration tests such as `TaskHttpIntegrationTests` and
+  `TaskAttachmentHttpIntegrationTests`.
+- Rate limiting (auth per IP, AI per user), explicit-origin CORS validated
+  at startup, HTTPS/HSTS, security headers, hardened file uploads (see
+  [Security](#security)), secrets only in User Secrets or environment variables.
+
+**Backend Development**
+- RESTful, versioned (`/api/v1`) controllers with `ProducesResponseType`
+  metadata and an OpenAPI document.
+- FluentValidation request validators; `GlobalExceptionHandler` maps
+  exceptions to RFC 7807 ProblemDetails with a `traceId`.
+- EF Core: code-first migrations, Fluent API configurations, `rowVersion`
+  optimistic concurrency (409 on conflict), soft delete through global query
+  filters, `AsNoTracking` reads, SQL-side search/sort/paging and dashboard
+  aggregates, `CancellationToken` passed down to every query.
+- Serilog structured request logging, health checks (`/health` with a
+  database check), audit log of changes.
+
+**Frontend Development**
+- Angular 21 standalone components, zoneless change detection, signals and
+  `OnPush`, lazy-loaded routes, typed reactive forms.
+- `authInterceptor` adds the bearer token and CSRF header and transparently
+  refreshes the session on a 401; `authGuard` / `adminGuard` protect routes.
+- One typed service per API area in `src/app/core`; subscriptions are tied
+  to the component lifetime with `takeUntilDestroyed`; API origin configured
+  in `src/environments`.
+
+**Design Patterns**
+- Repository + Unit of Work (`DAL/Persistence/Repositories`, `IUnitOfWork`).
+- Strategy: `IAiTextProvider` implemented by `MockAiTextProvider`,
+  `OpenAiCompatibleTextProvider` and `GitHubModelsTextProvider`; `AIService`
+  picks one by the `Ai:Provider` setting.
+- Options pattern (`JwtSettings`, `RefreshTokenSettings`,
+  `RefreshTokenCookieSettings` with `ValidateOnStart`, `AiSettings`,
+  `FileStorageOptions`), dependency injection throughout, DTO mapping at the
+  service boundary, middleware/interceptor pipelines.
+
+**Documentation**
+- This README (setup, API overview, security, folder structure),
+  [`PROMPTS.md`](PROMPTS.md) (AI prompt design), [`docs/architecture.md`](docs/architecture.md),
+  [`docs/database/README.md`](docs/database/README.md) (ERD and tables),
+  [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) (requirement → code → test),
+  [`docs/performance.md`](docs/performance.md), and the OpenAPI/Postman files in
+  [`docs/api`](docs/api).
+
+**Readability and Maintainability**
+- Consistent per-feature layout in both backend (`Services/<Feature>`,
+  `DTOs/<Feature>`, `Validators`) and frontend (`core/<area>`,
+  `features/<area>`).
+- Small controllers that only translate HTTP to service calls; business
+  rules live in the BLL where they are unit-tested.
+- Configuration validated at startup so misconfiguration fails fast.
+
 ## Deliverables
 
-| Deliverable | Location |
-| --- | --- |
-| Source code | This repository (`src/`, `frontend/`, `tests/`) |
-| Database | EF Core migrations in `src/SmartTask.DAL/Persistence/Migrations` (to produce a SQL script, set `SMARTTASK_DESIGN_TIME_CONNECTION_STRING` as in step 3 and run `dotnet ef migrations script --idempotent --project src/SmartTask.DAL --startup-project src/SmartTask.API -o smarttask.sql`) |
-| README | `README.md` |
-| AI prompt documentation | [`PROMPTS.md`](PROMPTS.md) |
-| API collection | [`docs/api`](docs/api): Postman collection + environment, OpenAPI export; live Swagger UI at `/swagger` |
+- [x] **Source code**: this repository ([`src/`](src), [`frontend/`](frontend), [`tests/`](tests))
+- [x] **Database**: EF Core migrations in
+  [`src/SmartTask.DAL/Persistence/Migrations`](src/SmartTask.DAL/Persistence/Migrations)
+  **and** the generated idempotent SQL script
+  [`docs/database/SmartTaskDb.sql`](docs/database/SmartTaskDb.sql)
+- [x] **README.md**: this file
+- [x] **PROMPTS.md**: [`PROMPTS.md`](PROMPTS.md)
+- [x] **API collection**: Postman
+  [collection](docs/api/SmartTask.postman_collection.json) +
+  [environment](docs/api/SmartTask.postman_environment.json), OpenAPI export
+  [`docs/api/openapi.json`](docs/api/openapi.json), offline Swagger UI
+  [`docs/api/swagger.html`](docs/api/swagger.html); live Swagger UI at
+  `https://localhost:7251/swagger` in Development

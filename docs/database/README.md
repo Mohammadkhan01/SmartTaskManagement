@@ -269,9 +269,20 @@ Indexes: `IX_AuditLogs_UserId_TimestampUtc`, `IX_AuditLogs_EntityName_EntityId`
 | `20261117102239_AlignTaskConstraintsAndIndexes` | Task status/priority checks, description 4000, indexes |
 | `20261117110250_AlignAuditLogSchema` | AuditLogs rebuilt with bigint identity key, EntityName, TimestampUtc, Details 2000, IpAddress varchar(45); existing rows copied |
 
-Generate a reviewable SQL script for deployment with:
+### SQL script
 
-    dotnet ef migrations script --idempotent --project src/SmartTask.DAL --startup-project src/SmartTask.API -o migrate.sql
+[`SmartTaskDb.sql`](SmartTaskDb.sql) is an idempotent T-SQL script generated
+from all of the migrations above. Each migration is guarded by an
+`__EFMigrationsHistory` check, so it can be run against an empty database or
+one that is partially migrated (for example in SQL Server Management Studio,
+Azure Data Studio or `sqlcmd -i docs/database/SmartTaskDb.sql`). Create the
+`SmartTaskDb` database first, then run the script inside it.
+
+Regenerate it after adding a migration (with
+`SMARTTASK_DESIGN_TIME_CONNECTION_STRING` set as in the
+[EF Core migrations](#ef-core-migrations) section):
+
+    dotnet ef migrations script --idempotent --project src/SmartTask.DAL --startup-project src/SmartTask.API -o docs/database/SmartTaskDb.sql
 
 ## Development database
 
