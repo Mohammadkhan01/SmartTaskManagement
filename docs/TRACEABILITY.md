@@ -290,8 +290,9 @@ See the security table above. All Done; HTTPS verified manually only.
    come from a small dataset (the demo Team Member sees 1 project, 0 tasks).
 4. **Angular initial load (Appendix G, < 3 s)** has not been measured; only the
    bundle size is reported (285.23 kB raw / 80.34 kB transfer).
-5. **CI workflow** (`.github/workflows/ci.yml`) is validated as YAML only. It has not
-   run on GitHub, and the README badge still uses an `<owner>/<repo>` placeholder.
+5. **CI workflow** (`.github/workflows/ci.yml`) has run on GitHub and passed
+   ([CI #2](https://github.com/Mohammadkhan01/SmartTaskManagement/actions)); the README
+   badge points at `Mohammadkhan01/SmartTaskManagement`.
 6. **Mermaid diagrams** (ERD, architecture) are hand-written and have not been rendered or
    validated by a tool.
 7. **Process approvals** (§2.6, Appendix K "Before Coding") have no recorded sign-off.
