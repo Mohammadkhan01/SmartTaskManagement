@@ -71,7 +71,7 @@ public sealed class ProjectListHttpIntegrationTests
                         Name = "Alpha Release",
                         Description = "Prepare the release plan.",
                         Status = ProjectStatus.Active,
-                        OwnerId = memberId
+                        CreatedByUserId = memberId
                     },
                     new Project
                     {
@@ -79,7 +79,7 @@ public sealed class ProjectListHttpIntegrationTests
                         Name = "Beta Release",
                         Description = "Complete release testing.",
                         Status = ProjectStatus.Active,
-                        OwnerId = memberId
+                        CreatedByUserId = memberId
                     },
                     new Project
                     {
@@ -87,7 +87,7 @@ public sealed class ProjectListHttpIntegrationTests
                         Name = "Gamma Planning",
                         Description = "Prepare the next project phase.",
                         Status = ProjectStatus.Planning,
-                        OwnerId = memberId
+                        CreatedByUserId = memberId
                     },
                     new Project
                     {
@@ -95,7 +95,7 @@ public sealed class ProjectListHttpIntegrationTests
                         Name = "Hidden Release",
                         Description = "This belongs to another user.",
                         Status = ProjectStatus.Active,
-                        OwnerId = outsiderId
+                        CreatedByUserId = outsiderId
                     });
 
                 context.ProjectMembers.AddRange(
@@ -103,25 +103,25 @@ public sealed class ProjectListHttpIntegrationTests
                     {
                         ProjectId = alphaId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Manager
+                        ProjectRole = ProjectMemberRole.Manager
                     },
                     new ProjectMember
                     {
                         ProjectId = betaId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     },
                     new ProjectMember
                     {
                         ProjectId = planningId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     },
                     new ProjectMember
                     {
                         ProjectId = outsiderProjectId,
                         UserId = outsiderId,
-                        Role = ProjectMemberRole.Manager
+                        ProjectRole = ProjectMemberRole.Manager
                     });
 
                 await context.SaveChangesAsync();
@@ -131,7 +131,7 @@ public sealed class ProjectListHttpIntegrationTests
             AuthenticateAs(client, memberId);
 
             var firstPageResponse = await client.GetAsync(
-                "/api/projects?search=release&status=Active" +
+                "/api/v1/projects?search=release&status=Active" +
                 "&pageNumber=1&pageSize=1" +
                 "&sortBy=name&sortDescending=false");
 
@@ -157,7 +157,7 @@ public sealed class ProjectListHttpIntegrationTests
 
             // Act: request the second page.
             var secondPageResponse = await client.GetAsync(
-                "/api/projects?search=release&status=Active" +
+                "/api/v1/projects?search=release&status=Active" +
                 "&pageNumber=2&pageSize=1" +
                 "&sortBy=name&sortDescending=false");
 
@@ -209,7 +209,7 @@ public async Task GetMyProjects_InvalidPageSize_ReturnsBadRequest()
     AuthenticateAs(client, Guid.NewGuid().ToString());
 
     var response = await client.GetAsync(
-        "/api/projects?pageNumber=1&pageSize=101");
+        "/api/v1/projects?pageNumber=1&pageSize=101");
 
     Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
@@ -238,7 +238,7 @@ public async Task GetMyProjects_Unauthenticated_ReturnsUnauthorized()
     using var client = factory.CreateClient();
 
     // No X-Test-UserId header is provided.
-    var response = await client.GetAsync("/api/projects");
+    var response = await client.GetAsync("/api/v1/projects");
 
     Assert.Equal(
         HttpStatusCode.Unauthorized,

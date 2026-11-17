@@ -19,6 +19,14 @@ public interface IProjectRepository
             ProjectListQueryRequest query,
             CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<Project>> GetAllAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<(IReadOnlyList<Project> Items, int TotalCount)>
+        GetPagedAllAsync(
+            ProjectListQueryRequest query,
+            CancellationToken cancellationToken = default);
+
     void Add(Project project);
 
     void Update(Project project);

@@ -21,6 +21,7 @@ using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace SmartTask.IntegrationTests;
+using Microsoft.AspNetCore.Identity;
 
 public sealed class ProjectConcurrencyHttpTests
 {
@@ -66,25 +67,35 @@ public sealed class ProjectConcurrencyHttpTests
             byte[] originalRowVersion;
 
             // Arrange: create an owner, project, and owner membership.
-            await using (var setupContext =
-                new SmartTaskDbContext(options))
-            {
-                setupContext.Users.Add(new ApplicationUser
-                {
-                    Id = ownerId,
-                    UserName = email,
-                    NormalizedUserName = email.ToUpperInvariant(),
-                    Email = email,
-                    NormalizedEmail = email.ToUpperInvariant(),
-                    SecurityStamp = Guid.NewGuid().ToString(),
-                    ConcurrencyStamp = Guid.NewGuid().ToString()
-                });
+           await using (var setupContext =
+    new SmartTaskDbContext(options))
+{
+    setupContext.Users.Add(new ApplicationUser
+    {
+        Id = ownerId,
+        UserName = email,
+        NormalizedUserName = email.ToUpperInvariant(),
+        Email = email,
+        NormalizedEmail = email.ToUpperInvariant(),
+        SecurityStamp = Guid.NewGuid().ToString(),
+        ConcurrencyStamp = Guid.NewGuid().ToString()
+    });
 
-                var project = new Project
+    // Assign the global Project Manager role.
+    var managerRole = await setupContext.Roles
+        .SingleAsync(role => role.NormalizedName == "PROJECT MANAGER");
+
+    setupContext.UserRoles.Add(new IdentityUserRole<string>
+    {
+        UserId = ownerId,
+        RoleId = managerRole.Id
+    });
+
+    var project = new Project
                 {
                     Id = projectId,
                     Name = "Original Project",
-                    OwnerId = ownerId
+                    CreatedByUserId = ownerId
                 };
 
                 setupContext.Projects.Add(project);
@@ -93,7 +104,7 @@ public sealed class ProjectConcurrencyHttpTests
                 {
                     ProjectId = projectId,
                     UserId = ownerId,
-                    Role = ProjectMemberRole.Manager
+                    ProjectRole = ProjectMemberRole.Manager
                 });
 
                 await setupContext.SaveChangesAsync();
@@ -122,7 +133,7 @@ public sealed class ProjectConcurrencyHttpTests
                     .SingleOrDefaultAsync(p => p.Id == projectId);
 
                 Assert.NotNull(persistedProject);
-                Assert.Equal(ownerId, persistedProject.OwnerId);
+                Assert.Equal(ownerId, persistedProject.CreatedByUserId);
                 Assert.False(persistedProject.IsDeleted);
             }
             // Act: submit the old RowVersion through the real HTTP endpoint.
@@ -136,7 +147,7 @@ public sealed class ProjectConcurrencyHttpTests
             };
 
             var response = await client.PutAsJsonAsync(
-                $"/api/projects/{projectId}",
+                $"/api/v1/projects/{projectId}",
                 request);
 
             // Assert: the API returns HTTP 409 Problem Details.
@@ -158,7 +169,7 @@ public sealed class ProjectConcurrencyHttpTests
                     "Updated by another request",
                     persistedProject.Name);
 
-                Assert.Equal(ownerId, persistedProject.OwnerId);
+                Assert.Equal(ownerId, persistedProject.CreatedByUserId);
                 Assert.False(persistedProject.IsDeleted);
             }
         }
@@ -227,11 +238,11 @@ internal sealed class ProjectTestWebApplicationFactory
                 {
                     ["ConnectionStrings:DefaultConnection"] =
                         _connectionString,
-                    ["JwtSettings:Issuer"] = "SmartTaskIntegrationTests",
-                    ["JwtSettings:Audience"] = "SmartTaskIntegrationTests",
-                    ["JwtSettings:SigningKey"] =
+                    ["Jwt:Issuer"] = "SmartTaskIntegrationTests",
+                    ["Jwt:Audience"] = "SmartTaskIntegrationTests",
+                    ["Jwt:SigningKey"] =
                         "IntegrationTestSigningKeyMustBeAtLeast32Chars",
-                    ["JwtSettings:AccessTokenExpirationMinutes"] = "15"
+                    ["Jwt:AccessTokenExpirationMinutes"] = "15"
                 });
         });
 

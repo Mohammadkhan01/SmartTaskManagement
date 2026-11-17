@@ -1,8 +1,11 @@
 
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmartTask.BLL.Configuration;
+using SmartTask.BLL.Interfaces.Repositories;
 using Microsoft.IdentityModel.Tokens;
 using SmartTask.BLL.Interfaces.Services;
 
@@ -40,8 +43,26 @@ public static class AuthenticationDependencyInjection
                 "JWT access token expiration must be greater than zero.");
         }
 
-        var signingKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtSettings.SigningKey));
+        var refreshTokenSettings = configuration
+            .GetSection(RefreshTokenSettings.SectionName)
+            .Get<RefreshTokenSettings>()
+            ?? new RefreshTokenSettings();
+
+        if (refreshTokenSettings.ExpirationDays <= 0)
+        {
+            throw new InvalidOperationException(
+                "Refresh token expiration must be greater than zero.");
+        }
+
+        services.Configure<RefreshTokenSettings>(
+            configuration.GetSection(RefreshTokenSettings.SectionName));
+
+        services.AddOptions<RefreshTokenCookieSettings>()
+            .Bind(configuration.GetSection(RefreshTokenCookieSettings.SectionName))
+            .Validate(
+                settings => RefreshTokenCookieSettings.IsValid(settings, out _),
+                "Refresh token cookie configuration is invalid.")
+            .ValidateOnStart();
 
         services.Configure<JwtSettings>(
             configuration.GetSection(JwtSettings.SectionName));
@@ -57,21 +78,80 @@ public static class AuthenticationDependencyInjection
             })
             .AddJwtBearer(options =>
             {
-                options.TokenValidationParameters = new TokenValidationParameters
+                options.Events = new JwtBearerEvents
                 {
-                    ValidateIssuer = true,
-                    ValidIssuer = jwtSettings.Issuer,
+                    OnTokenValidated = async context =>
+                    {
+                        var userId = context.Principal?
+                            .FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-                    ValidateAudience = true,
-                    ValidAudience = jwtSettings.Audience,
+                        if (string.IsNullOrWhiteSpace(userId))
+                        {
+                            context.Fail("The token does not contain a valid user identifier.");
+                            return;
+                        }
 
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = signingKey,
+                        var userRepository = context.HttpContext.RequestServices
+                            .GetRequiredService<IUserAccountRepository>();
 
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                        var user = await userRepository.FindByIdAsync(
+                            userId,
+                            context.HttpContext.RequestAborted);
+
+                        if (user is null || !user.IsActive)
+                        {
+                            context.Fail("The user account is inactive or no longer exists.");
+                            return;
+                        }
+
+                        var tokenRoles = context.Principal?
+                            .FindAll(ClaimTypes.Role)
+                            .Select(claim => claim.Value)
+                            .Where(role => !string.IsNullOrWhiteSpace(role))
+                            .Distinct(StringComparer.Ordinal)
+                            .OrderBy(role => role, StringComparer.Ordinal)
+                            .ToArray()
+                            ?? Array.Empty<string>();
+
+                        var currentRoles = (await userRepository.GetRolesAsync(
+                                userId,
+                                context.HttpContext.RequestAborted))
+                            .Where(role => !string.IsNullOrWhiteSpace(role))
+                            .Distinct(StringComparer.Ordinal)
+                            .OrderBy(role => role, StringComparer.Ordinal)
+                            .ToArray();
+
+                        if (!tokenRoles.SequenceEqual(
+                                currentRoles,
+                                StringComparer.Ordinal))
+                        {
+                            context.Fail("The user's roles have changed. Please authenticate again.");
+                        }
+                    }
                 };
             });
+
+        services.AddOptions<JwtBearerOptions>(
+                JwtBearerDefaults.AuthenticationScheme)
+            .Configure<Microsoft.Extensions.Options.IOptions<JwtSettings>>(
+                (options, settingsOptions) =>
+                {
+                    var settings = settingsOptions.Value;
+
+                    options.TokenValidationParameters =
+                        new TokenValidationParameters
+                        {
+                            ValidateIssuer = true,
+                            ValidIssuer = settings.Issuer,
+                            ValidateAudience = true,
+                            ValidAudience = settings.Audience,
+                            ValidateIssuerSigningKey = true,
+                            IssuerSigningKey = new SymmetricSecurityKey(
+                                Encoding.UTF8.GetBytes(settings.SigningKey)),
+                            ValidateLifetime = true,
+                            ClockSkew = TimeSpan.FromSeconds(30)
+                        };
+                });
 
         services.AddAuthorization();
         services.AddScoped<IJwtTokenService, JwtTokenService>();

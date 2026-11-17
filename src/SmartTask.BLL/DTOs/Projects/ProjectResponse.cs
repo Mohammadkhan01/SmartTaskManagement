@@ -12,7 +12,7 @@ public class ProjectResponse
 
     public ProjectStatus Status { get; set; }
 
-    public string OwnerId { get; set; } = string.Empty;
+    public string CreatedByUserId { get; set; } = string.Empty;
 
     public DateTime CreatedAtUtc { get; set; }
 

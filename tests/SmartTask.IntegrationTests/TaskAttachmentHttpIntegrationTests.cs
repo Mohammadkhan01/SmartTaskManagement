@@ -67,7 +67,7 @@ public sealed class TaskAttachmentHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Attachment Integration Test Project",
-                    OwnerId = managerId
+                    CreatedByUserId = managerId
                 });
 
                 context.ProjectMembers.AddRange(
@@ -75,13 +75,13 @@ public sealed class TaskAttachmentHttpIntegrationTests
                     {
                         ProjectId = projectId,
                         UserId = managerId,
-                        Role = ProjectMemberRole.Manager
+                        ProjectRole = ProjectMemberRole.Manager
                     },
                     new ProjectMember
                     {
                         ProjectId = projectId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     });
 
                 context.Tasks.Add(new TaskItem

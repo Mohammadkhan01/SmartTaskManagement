@@ -12,7 +12,7 @@ public class Project : SoftDeletableEntity
     public ProjectStatus Status { get; set; } = ProjectStatus.Planning;
 
     // References the ASP.NET Identity user ID.
-    public string OwnerId { get; set; } = string.Empty;
+    public string CreatedByUserId { get; set; } = string.Empty;
 
     public ICollection<ProjectMember> Members { get; set; }
         = new List<ProjectMember>();

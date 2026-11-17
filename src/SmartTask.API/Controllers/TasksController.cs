@@ -17,7 +17,7 @@ public sealed class TasksController : ControllerBase
         _taskService = taskService;
     }
 
-    [HttpGet("api/projects/{projectId:guid}/tasks")]
+    [HttpGet("api/v1/projects/{projectId:guid}/tasks")]
     [ProducesResponseType(typeof(TaskListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -41,7 +41,7 @@ public sealed class TasksController : ControllerBase
         return Ok(tasks);
     }
 
-    [HttpPost("api/projects/{projectId:guid}/tasks")]
+    [HttpPost("api/v1/projects/{projectId:guid}/tasks")]
     [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -68,7 +68,7 @@ public sealed class TasksController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, task);
     }
 
-    [HttpGet("api/tasks/{taskId:guid}")]
+    [HttpGet("api/v1/tasks/{taskId:guid}")]
     [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -92,7 +92,7 @@ public sealed class TasksController : ControllerBase
         return Ok(task);
     }
 
-    [HttpPut("api/tasks/{taskId:guid}")]
+    [HttpPut("api/v1/tasks/{taskId:guid}")]
     [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -120,7 +120,35 @@ public sealed class TasksController : ControllerBase
         return Ok(task);
     }
 
-    [HttpPatch("api/tasks/{taskId:guid}/status")]
+    [HttpPut("api/v1/tasks/{taskId:guid}/assign")]
+    [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<TaskResponse>> Assign(
+        Guid taskId,
+        [FromBody] AssignTaskRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var task = await _taskService.AssignAsync(
+            taskId,
+            request,
+            userId,
+            cancellationToken);
+
+        if (task is null)
+            return NotFound();
+
+        return Ok(task);
+    }
+
+    [HttpPut("api/v1/tasks/{taskId:guid}/status")]
     [ProducesResponseType(typeof(TaskResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -148,7 +176,7 @@ public sealed class TasksController : ControllerBase
         return Ok(task);
     }
 
-    [HttpDelete("api/tasks/{taskId:guid}")]
+    [HttpDelete("api/v1/tasks/{taskId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

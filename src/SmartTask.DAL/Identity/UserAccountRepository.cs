@@ -57,7 +57,30 @@ public sealed class UserAccountRepository : IUserAccountRepository
         {
             Id = user.Id,
             DisplayName = user.DisplayName ?? string.Empty,
-            Email = user.Email ?? string.Empty
+            Email = user.Email ?? string.Empty,
+            IsActive = user.IsActive
+        };
+    }
+
+    public async Task<UserAccount?> FindByIdAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await _userManager.FindByIdAsync(userId);
+
+        if (user is null)
+        {
+            return null;
+        }
+
+        return new UserAccount
+        {
+            Id = user.Id,
+            DisplayName = user.DisplayName ?? string.Empty,
+            Email = user.Email ?? string.Empty,
+            IsActive = user.IsActive
         };
     }
 

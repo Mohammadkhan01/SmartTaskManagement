@@ -322,7 +322,7 @@ public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
         }
 
         var isUploader = attachment.UploadedByUserId == userId;
-        var isManager = membership.Role == ProjectMemberRole.Manager;
+        var isManager = membership.ProjectRole == ProjectMemberRole.Manager;
 
         if (!isUploader && !isManager)
         {

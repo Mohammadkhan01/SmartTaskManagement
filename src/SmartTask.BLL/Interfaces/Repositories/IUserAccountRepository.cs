@@ -13,6 +13,10 @@ public interface IUserAccountRepository
         string email,
         CancellationToken cancellationToken = default);
 
+    Task<UserAccount?> FindByIdAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<bool> CheckPasswordAsync(
         string userId,
         string password,
@@ -33,4 +37,5 @@ public sealed class UserAccount
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
 }

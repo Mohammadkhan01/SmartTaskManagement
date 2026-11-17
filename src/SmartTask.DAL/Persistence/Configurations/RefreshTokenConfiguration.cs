@@ -1,4 +1,3 @@
-﻿
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartTask.DAL.Identity;
@@ -21,23 +20,27 @@ public class RefreshTokenConfiguration
 
         builder.Property(rt => rt.TokenHash)
             .IsRequired()
-            .HasMaxLength(128);
-
-        builder.Property(rt => rt.ReplacedByTokenHash)
-            .HasMaxLength(128);
+            .HasMaxLength(128)
+            .HasColumnType("varchar(128)");
 
         builder.Property(rt => rt.CreatedByIp)
-            .HasMaxLength(45);
+            .HasMaxLength(45)
+            .HasColumnType("varchar(45)");
 
         builder.Property(rt => rt.RevokedByIp)
-            .HasMaxLength(45);
+            .HasMaxLength(45)
+            .HasColumnType("varchar(45)");
 
         builder.HasOne<ApplicationUser>()
             .WithMany()
             .HasForeignKey(rt => rt.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A token hash must be unique.
+        builder.HasOne<RefreshToken>()
+            .WithMany()
+            .HasForeignKey(rt => rt.ReplacedByTokenId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(rt => rt.TokenHash)
             .IsUnique();
 

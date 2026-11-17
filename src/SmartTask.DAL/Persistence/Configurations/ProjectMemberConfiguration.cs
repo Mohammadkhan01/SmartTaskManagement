@@ -1,4 +1,3 @@
-﻿
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartTask.DAL.Identity;
@@ -11,35 +10,33 @@ public class ProjectMemberConfiguration
 {
     public void Configure(EntityTypeBuilder<ProjectMember> builder)
     {
-        builder.ToTable("ProjectMembers");
+        builder.ToTable("ProjectMembers", table =>
+            table.HasCheckConstraint(
+                "CK_ProjectMembers_ProjectRole",
+                "[ProjectRole] IN (1, 2)"));
 
-        builder.HasKey(pm => pm.Id);
+        builder.HasKey(pm => new { pm.ProjectId, pm.UserId });
+
         builder.HasQueryFilter(pm => !pm.Project.IsDeleted);
+
         builder.Property(pm => pm.UserId)
             .IsRequired()
             .HasMaxLength(450);
 
-        builder.Property(pm => pm.Role)
+        builder.Property(pm => pm.ProjectRole)
+            .HasColumnName("ProjectRole")
             .IsRequired();
 
         builder.Property(pm => pm.JoinedAtUtc)
             .IsRequired();
 
         // Project relationship is configured in ProjectConfiguration.
-
-        // User relationship
         builder.HasOne<ApplicationUser>()
             .WithMany()
             .HasForeignKey(pm => pm.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // A user can join a project only once.
-        builder.HasIndex(pm => new { pm.ProjectId, pm.UserId })
-            .IsUnique();
-
-        // Find all projects belonging to a user.
-        builder.HasIndex(pm => pm.UserId);
-
-
+        // Supports finding all projects for a user.
+        builder.HasIndex(pm => new { pm.UserId, pm.ProjectId });
     }
 }

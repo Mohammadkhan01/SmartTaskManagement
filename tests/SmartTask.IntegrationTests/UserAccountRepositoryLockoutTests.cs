@@ -10,6 +10,77 @@ namespace SmartTask.IntegrationTests;
 public sealed class UserAccountRepositoryLockoutTests
 {
     [Fact]
+    public async Task FindByIdAsync_ExistingUser_ReturnsUserAccount()
+    {
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        services.AddHttpContextAccessor();
+        services.AddAuthentication();
+
+        services.AddDbContext<SmartTaskDbContext>(options =>
+            options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+
+        services.AddIdentityCore<ApplicationUser>()
+            .AddRoles<IdentityRole>()
+            .AddEntityFrameworkStores<SmartTaskDbContext>()
+            .AddSignInManager()
+            .AddDefaultTokenProviders();
+
+        services.AddScoped<IUserAccountRepository, UserAccountRepository>();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var repository = scope.ServiceProvider
+            .GetRequiredService<IUserAccountRepository>();
+
+        var creation = await repository.CreateUserAsync(
+            "Lookup Test",
+            $"lookup-{Guid.NewGuid():N}@example.com",
+            "LookupTest@2026Secure");
+
+        Assert.True(creation.Succeeded);
+
+        var account = await repository.FindByIdAsync(creation.UserId);
+
+        Assert.NotNull(account);
+        Assert.Equal(creation.UserId, account.Id);
+        Assert.Equal("Lookup Test", account.DisplayName);
+    }
+
+    [Fact]
+    public async Task FindByIdAsync_UnknownUser_ReturnsNull()
+    {
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        services.AddHttpContextAccessor();
+        services.AddAuthentication();
+
+        services.AddDbContext<SmartTaskDbContext>(options =>
+            options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+
+        services.AddIdentityCore<ApplicationUser>()
+            .AddRoles<IdentityRole>()
+            .AddEntityFrameworkStores<SmartTaskDbContext>()
+            .AddSignInManager()
+            .AddDefaultTokenProviders();
+
+        services.AddScoped<IUserAccountRepository, UserAccountRepository>();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var repository = scope.ServiceProvider
+            .GetRequiredService<IUserAccountRepository>();
+
+        var account = await repository.FindByIdAsync("missing-user-id");
+
+        Assert.Null(account);
+    }
+
+    [Fact]
     public async Task CheckPasswordAsync_FiveFailedAttempts_LocksAccount()
     {
         // Arrange: create an isolated Identity environment.

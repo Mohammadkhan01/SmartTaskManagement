@@ -20,6 +20,26 @@ public sealed class DashboardService : IDashboardService
         _projectMemberRepository = projectMemberRepository;
     }
 
+    private const int UpcomingTaskCount = 10;
+    private const int UpcomingWindowDays = 7;
+
+    public async Task<DashboardTaskStatisticsResponse> GetMyTaskStatisticsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var nowUtc = DateTime.UtcNow;
+        var upcomingCutoffUtc = nowUtc.AddDays(UpcomingWindowDays);
+
+        return await _dashboardRepository.GetMyTaskStatisticsAsync(
+            userId,
+            nowUtc,
+            upcomingCutoffUtc,
+            UpcomingTaskCount,
+            cancellationToken);
+    }
+
     public async Task<DashboardSummaryResponse> GetMyDashboardAsync(
         string userId,
         CancellationToken cancellationToken = default)
@@ -91,7 +111,7 @@ public sealed class DashboardService : IDashboardService
                 cancellationToken);
 
         if (membership is null ||
-            membership.Role != ProjectMemberRole.Manager)
+            membership.ProjectRole != ProjectMemberRole.Manager)
         {
             return null;
         }

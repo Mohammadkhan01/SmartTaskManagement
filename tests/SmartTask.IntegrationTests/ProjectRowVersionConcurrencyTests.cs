@@ -60,7 +60,7 @@ public sealed class ProjectRowVersionConcurrencyTests
                 {
                     Id = projectId,
                     Name = "Concurrency Test Project",
-                    OwnerId = ownerId
+                    CreatedByUserId = ownerId
                 });
 
                 await setupContext.SaveChangesAsync();

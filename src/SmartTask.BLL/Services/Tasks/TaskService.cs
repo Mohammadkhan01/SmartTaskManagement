@@ -10,31 +10,40 @@ namespace SmartTask.BLL.Services.Tasks;
 public class TaskService : ITaskService
 {
     private readonly ITaskRepository _taskRepository;
+    private readonly IProjectRepository _projectRepository;
     private readonly IProjectMemberRepository _memberRepository;
+    private readonly IUserAccountRepository _userAccountRepository;
     private readonly INotificationRepository _notificationRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateTaskRequest> _createValidator;
     private readonly IValidator<UpdateTaskRequest> _updateValidator;
     private readonly IValidator<UpdateTaskStatusRequest> _statusValidator;
+    private readonly IValidator<AssignTaskRequest> _assignValidator;
     private readonly IValidator<TaskListQueryRequest> _listQueryValidator;
 
     public TaskService(
         ITaskRepository taskRepository,
+        IProjectRepository projectRepository,
         IProjectMemberRepository memberRepository,
+        IUserAccountRepository userAccountRepository,
         INotificationRepository notificationRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskRequest> createValidator,
         IValidator<UpdateTaskRequest> updateValidator,
         IValidator<UpdateTaskStatusRequest> statusValidator,
+        IValidator<AssignTaskRequest> assignValidator,
         IValidator<TaskListQueryRequest> listQueryValidator)
     {
         _taskRepository = taskRepository;
+        _projectRepository = projectRepository;
         _memberRepository = memberRepository;
+        _userAccountRepository = userAccountRepository;
         _notificationRepository = notificationRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _statusValidator = statusValidator;
+        _assignValidator = assignValidator;
         _listQueryValidator = listQueryValidator;
     }
 
@@ -48,12 +57,7 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            projectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null)
+        if (!await CanViewTasksAsync(projectId, userId, cancellationToken))
         {
             return null;
         }
@@ -74,10 +78,7 @@ public class TaskService : ITaskService
         if (projectId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
             return null;
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            projectId, userId, cancellationToken);
-
-        if (membership is null)
+        if (!await CanViewTasksAsync(projectId, userId, cancellationToken))
             return null;
 
         var validationResult = await _listQueryValidator.ValidateAsync(
@@ -124,12 +125,10 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            task.ProjectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null)
+        if (!await CanViewTasksAsync(
+                task.ProjectId,
+                userId,
+                cancellationToken))
         {
             return null;
         }
@@ -148,12 +147,7 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            projectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null || membership.Role != ProjectMemberRole.Manager)
+        if (!await CanManageTasksAsync(projectId, userId, cancellationToken))
         {
             return null;
         }
@@ -171,17 +165,10 @@ public class TaskService : ITaskService
 
         if (assignedToUserId is not null)
         {
-            var assigneeMembership =
-                await _memberRepository.GetByProjectAndUserAsync(
-                    projectId,
-                    assignedToUserId,
-                    cancellationToken);
-
-            if (assigneeMembership is null)
-            {
-                throw new ValidationException(
-                    "The assigned user must be a member of this project.");
-            }
+            await ValidateAssigneeAsync(
+                projectId,
+                assignedToUserId,
+                cancellationToken);
         }
 
         var task = new TaskItem
@@ -236,12 +223,10 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            task.ProjectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null || membership.Role != ProjectMemberRole.Manager)
+        if (!await CanManageTasksAsync(
+                task.ProjectId,
+                userId,
+                cancellationToken))
         {
             return null;
         }
@@ -260,17 +245,10 @@ public class TaskService : ITaskService
 
         if (assignedToUserId is not null)
         {
-            var assigneeMembership =
-                await _memberRepository.GetByProjectAndUserAsync(
-                    task.ProjectId,
-                    assignedToUserId,
-                    cancellationToken);
-
-            if (assigneeMembership is null)
-            {
-                throw new ValidationException(
-                    "The assigned user must be a member of this project.");
-            }
+            await ValidateAssigneeAsync(
+                task.ProjectId,
+                assignedToUserId,
+                cancellationToken);
         }
 
         _taskRepository.SetOriginalRowVersion(
@@ -285,6 +263,84 @@ public class TaskService : ITaskService
 
         if (assignedToUserId is not null &&
             assignedToUserId != previousAssigneeId &&
+            assignedToUserId != userId)
+        {
+            _notificationRepository.Add(new Notification
+            {
+                RecipientUserId = assignedToUserId,
+                Type = previousAssigneeId is null
+                    ? "TaskAssigned"
+                    : "TaskReassigned",
+                Title = "Task assigned to you",
+                Message = $"You have been assigned the task '{task.Title}'.",
+                RelatedEntityId = task.Id,
+                RelatedEntityType = "Task"
+            });
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return MapToResponse(task);
+    }
+
+    public async Task<TaskResponse?> AssignAsync(
+        Guid taskId,
+        AssignTaskRequest request,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (taskId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
+            return null;
+
+        var validationResult = await _assignValidator.ValidateAsync(
+            request,
+            cancellationToken);
+
+        if (!validationResult.IsValid)
+            throw new ValidationException(validationResult.Errors);
+
+        var task = await _taskRepository.GetByIdAsync(
+            taskId,
+            cancellationToken);
+
+        if (task is null || task.IsDeleted)
+            return null;
+
+        var project = await _projectRepository.GetByIdAsync(
+            task.ProjectId,
+            cancellationToken);
+
+        if (project is null ||
+            project.IsDeleted ||
+            project.Status != ProjectStatus.Active)
+        {
+            return null;
+        }
+
+        if (!await CanManageTasksAsync(
+                task.ProjectId,
+                userId,
+                cancellationToken))
+        {
+            return null;
+        }
+
+        var assignedToUserId = request.AssignedToUserId.Trim();
+
+        await ValidateAssigneeAsync(
+            task.ProjectId,
+            assignedToUserId,
+            cancellationToken);
+
+        var previousAssigneeId = task.AssignedToUserId;
+
+        _taskRepository.SetOriginalRowVersion(
+            task,
+            Convert.FromBase64String(request.RowVersion));
+
+        task.AssignedToUserId = assignedToUserId;
+
+        if (assignedToUserId != previousAssigneeId &&
             assignedToUserId != userId)
         {
             _notificationRepository.Add(new Notification
@@ -325,20 +381,10 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            task.ProjectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null)
-        {
-            return null;
-        }
-
-        var isManager = membership.Role == ProjectMemberRole.Manager;
-        var isAssignedMember = task.AssignedToUserId == userId;
-
-        if (!isManager && !isAssignedMember)
+        if (!await CanUpdateTaskStatusAsync(
+                task,
+                userId,
+                cancellationToken))
         {
             return null;
         }
@@ -398,12 +444,10 @@ public class TaskService : ITaskService
             return false;
         }
 
-        var membership = await _memberRepository.GetByProjectAndUserAsync(
-            task.ProjectId,
-            userId,
-            cancellationToken);
-
-        if (membership is null || membership.Role != ProjectMemberRole.Manager)
+        if (!await CanManageTasksAsync(
+                task.ProjectId,
+                userId,
+                cancellationToken))
         {
             return false;
         }
@@ -414,6 +458,135 @@ public class TaskService : ITaskService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private async Task<bool> CanViewTasksAsync(
+        Guid projectId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var roles = await _userAccountRepository.GetRolesAsync(
+            userId,
+            cancellationToken);
+
+        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var hasPermittedGlobalRole =
+            roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase) ||
+            roles.Contains("Team Member", StringComparer.OrdinalIgnoreCase);
+
+        if (!hasPermittedGlobalRole)
+        {
+            return false;
+        }
+
+        return await _memberRepository.GetByProjectAndUserAsync(
+            projectId,
+            userId,
+            cancellationToken) is not null;
+    }
+
+    private async Task<bool> CanManageTasksAsync(
+        Guid projectId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var roles = await _userAccountRepository.GetRolesAsync(
+            userId,
+            cancellationToken);
+
+        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var membership = await _memberRepository.GetByProjectAndUserAsync(
+            projectId,
+            userId,
+            cancellationToken);
+
+        return membership?.ProjectRole == ProjectMemberRole.Manager;
+    }
+
+    private async Task<bool> CanUpdateTaskStatusAsync(
+        TaskItem task,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var roles = await _userAccountRepository.GetRolesAsync(
+            userId,
+            cancellationToken);
+
+        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var membership = await _memberRepository.GetByProjectAndUserAsync(
+            task.ProjectId,
+            userId,
+            cancellationToken);
+
+        if (membership is null)
+        {
+            return false;
+        }
+
+        if (roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase) &&
+            membership.ProjectRole == ProjectMemberRole.Manager)
+        {
+            return true;
+        }
+
+        return roles.Contains("Team Member", StringComparer.OrdinalIgnoreCase) &&
+               task.AssignedToUserId == userId;
+    }
+
+    private async Task ValidateAssigneeAsync(
+        Guid projectId,
+        string assignedToUserId,
+        CancellationToken cancellationToken)
+    {
+        var project = await _projectRepository.GetByIdAsync(
+            projectId,
+            cancellationToken);
+
+        if (project is null ||
+            project.IsDeleted ||
+            project.Status != ProjectStatus.Active)
+        {
+            throw new ValidationException(
+                "Tasks can only be assigned within an active project.");
+        }
+
+        var account = await _userAccountRepository.FindByIdAsync(
+            assignedToUserId,
+            cancellationToken);
+
+        if (account is null || !account.IsActive)
+        {
+            throw new ValidationException(
+                "The assigned user must exist and have an active account.");
+        }
+
+        var membership = await _memberRepository.GetByProjectAndUserAsync(
+            projectId,
+            assignedToUserId,
+            cancellationToken);
+
+        if (membership is null)
+        {
+            throw new ValidationException(
+                "The assigned user must be a member of this project.");
+        }
     }
 
     private static TaskResponse MapToResponse(TaskItem task)

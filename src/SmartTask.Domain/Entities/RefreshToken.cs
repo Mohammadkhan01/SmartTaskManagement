@@ -12,7 +12,7 @@ public class RefreshToken : BaseEntity
 
     public DateTime? RevokedAtUtc { get; set; }
 
-    public string? ReplacedByTokenHash { get; set; }
+    public Guid? ReplacedByTokenId { get; set; }
 
     public string? CreatedByIp { get; set; }
 

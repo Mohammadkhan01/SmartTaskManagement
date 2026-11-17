@@ -65,7 +65,7 @@ public sealed class DashboardHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Dashboard Integration Project",
-                    OwnerId = managerId
+                    CreatedByUserId = managerId
                 });
 
                 context.ProjectMembers.AddRange(
@@ -73,19 +73,19 @@ public sealed class DashboardHttpIntegrationTests
                     {
                         ProjectId = projectId,
                         UserId = managerId,
-                        Role = ProjectMemberRole.Manager
+                        ProjectRole = ProjectMemberRole.Manager
                     },
                     new ProjectMember
                     {
                         ProjectId = projectId,
                         UserId = assignedUserId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     },
                     new ProjectMember
                     {
                         ProjectId = projectId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     });
 
                 var tasks = new[]
@@ -97,7 +97,8 @@ public sealed class DashboardHttpIntegrationTests
                         "Assigned overdue todo",
                         TaskStatus.ToDo,
                         overdueDate,
-                        todayUtc.AddHours(1)),
+                        todayUtc.AddHours(1),
+                        TaskPriority.Low),
 
                     CreateTask(
                         projectId,
@@ -106,7 +107,8 @@ public sealed class DashboardHttpIntegrationTests
                         "Assigned due today",
                         TaskStatus.InProgress,
                         dueTodayDate,
-                        todayUtc.AddHours(2)),
+                        todayUtc.AddHours(2),
+                        TaskPriority.Medium),
 
                     CreateTask(
                         projectId,
@@ -115,7 +117,8 @@ public sealed class DashboardHttpIntegrationTests
                         "Completed overdue task",
                         TaskStatus.Completed,
                         overdueDate,
-                        todayUtc.AddHours(3)),
+                        todayUtc.AddHours(3),
+                        TaskPriority.High),
 
                     CreateTask(
                         projectId,
@@ -124,7 +127,8 @@ public sealed class DashboardHttpIntegrationTests
                         "Cancelled overdue task",
                         TaskStatus.Cancelled,
                         overdueDate,
-                        todayUtc.AddHours(4)),
+                        todayUtc.AddHours(4),
+                        TaskPriority.Critical),
 
                     CreateTask(
                         projectId,
@@ -133,16 +137,18 @@ public sealed class DashboardHttpIntegrationTests
                         "Completed future task",
                         TaskStatus.Completed,
                         futureDate,
-                        todayUtc.AddHours(5)),
+                        todayUtc.AddHours(5),
+                        TaskPriority.Medium),
 
                     CreateTask(
                         projectId,
                         managerId,
-                        null,
-                        "Unassigned todo task",
+                        assignedUserId,
+                        "Assigned upcoming todo task",
                         TaskStatus.ToDo,
                         futureDate,
-                        todayUtc.AddHours(6))
+                        todayUtc.AddHours(6),
+                        TaskPriority.Critical)
                 };
 
                 var deletedTask = CreateTask(
@@ -186,7 +192,7 @@ public sealed class DashboardHttpIntegrationTests
             // 1. My dashboard includes only tasks assigned to this user.
             AuthenticateAs(client, assignedUserId);
 
-            var myResponse = await client.GetAsync("/api/dashboard/me");
+            var myResponse = await client.GetAsync("/api/v1/dashboard/summary");
 
             Assert.Equal(HttpStatusCode.OK, myResponse.StatusCode);
 
@@ -196,24 +202,66 @@ public sealed class DashboardHttpIntegrationTests
 
             Assert.NotNull(myDashboard);
             Assert.Null(myDashboard.ProjectId);
-            Assert.Equal(5, myDashboard.TotalTasks);
-            Assert.Equal(1, myDashboard.ToDoTasks);
+            Assert.Equal(6, myDashboard.TotalTasks);
+            Assert.Equal(2, myDashboard.ToDoTasks);
             Assert.Equal(1, myDashboard.InProgressTasks);
             Assert.Equal(2, myDashboard.CompletedTasks);
             Assert.Equal(1, myDashboard.CancelledTasks);
             Assert.Equal(1, myDashboard.OverdueTasks);
             Assert.Equal(1, myDashboard.DueTodayTasks);
-            Assert.Equal(40m, myDashboard.CompletionPercentage);
-            Assert.Equal(5, myDashboard.RecentTasks.Count);
+            Assert.Equal(33.33m, myDashboard.CompletionPercentage);
+            Assert.Equal(6, myDashboard.RecentTasks.Count);
             Assert.DoesNotContain(
                 myDashboard.RecentTasks,
+                task => task.Title == "Soft deleted task");
+
+            // 1a. Personal task statistics include status, priority and upcoming aggregates.
+            var statisticsResponse = await client.GetAsync(
+                "/api/v1/dashboard/task-statistics");
+
+            Assert.Equal(HttpStatusCode.OK, statisticsResponse.StatusCode);
+
+            var statistics =
+                await statisticsResponse.Content
+                    .ReadFromJsonAsync<DashboardTaskStatisticsResponse>();
+
+            Assert.NotNull(statistics);
+            Assert.Equal(6, statistics.TotalTasks);
+            Assert.Equal(2, statistics.ToDoTasks);
+            Assert.Equal(1, statistics.InProgressTasks);
+            Assert.Equal(2, statistics.CompletedTasks);
+            Assert.Equal(1, statistics.CancelledTasks);
+            Assert.Equal(3, statistics.PendingTasks);
+            Assert.Equal(33.33m, statistics.CompletionPercentage);
+
+            Assert.Equal(1, statistics.LowPriorityTasks);
+            Assert.Equal(2, statistics.MediumPriorityTasks);
+            Assert.Equal(1, statistics.HighPriorityTasks);
+            Assert.Equal(2, statistics.CriticalPriorityTasks);
+
+            Assert.Equal(2, statistics.UpcomingTasks.Count);
+            Assert.Equal(
+                "Assigned due today",
+                statistics.UpcomingTasks[0].Title);
+            Assert.Equal(
+                "Assigned upcoming todo task",
+                statistics.UpcomingTasks[1].Title);
+
+            Assert.DoesNotContain(
+                statistics.UpcomingTasks,
+                task => task.Title.Contains("Completed"));
+            Assert.DoesNotContain(
+                statistics.UpcomingTasks,
+                task => task.Title.Contains("Cancelled"));
+            Assert.DoesNotContain(
+                statistics.UpcomingTasks,
                 task => task.Title == "Soft deleted task");
 
             // 2. Any project member can view project-wide metrics.
             AuthenticateAs(client, memberId);
 
             var projectResponse = await client.GetAsync(
-                $"/api/dashboard/projects/{projectId}");
+                $"/api/v1/dashboard/projects/{projectId}");
 
             Assert.Equal(HttpStatusCode.OK, projectResponse.StatusCode);
 
@@ -235,12 +283,12 @@ public sealed class DashboardHttpIntegrationTests
             Assert.Equal(33.33m, projectDashboard.CompletionPercentage);
             Assert.Equal(6, projectDashboard.RecentTasks.Count);
             Assert.Equal(
-                "Unassigned todo task",
+                "Assigned upcoming todo task",
                 projectDashboard.RecentTasks[0].Title);
 
             // 3. A regular member cannot view workload reporting.
             var memberWorkloadResponse = await client.GetAsync(
-                $"/api/dashboard/projects/{projectId}/workload");
+                $"/api/v1/dashboard/projects/{projectId}/workload");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -250,14 +298,14 @@ public sealed class DashboardHttpIntegrationTests
             AuthenticateAs(client, outsiderId);
 
             var outsiderDashboardResponse = await client.GetAsync(
-                $"/api/dashboard/projects/{projectId}");
+                $"/api/v1/dashboard/projects/{projectId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 outsiderDashboardResponse.StatusCode);
 
             var outsiderWorkloadResponse = await client.GetAsync(
-                $"/api/dashboard/projects/{projectId}/workload");
+                $"/api/v1/dashboard/projects/{projectId}/workload");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -267,7 +315,7 @@ public sealed class DashboardHttpIntegrationTests
             AuthenticateAs(client, managerId);
 
             var workloadResponse = await client.GetAsync(
-                $"/api/dashboard/projects/{projectId}/workload");
+                $"/api/v1/dashboard/projects/{projectId}/workload");
 
             Assert.Equal(HttpStatusCode.OK, workloadResponse.StatusCode);
 
@@ -283,8 +331,8 @@ public sealed class DashboardHttpIntegrationTests
                 item => item.UserId == assignedUserId);
 
             Assert.Equal("Assigned User", assignedWorkload.DisplayName);
-            Assert.Equal(5, assignedWorkload.TotalTasks);
-            Assert.Equal(1, assignedWorkload.ToDoTasks);
+            Assert.Equal(6, assignedWorkload.TotalTasks);
+            Assert.Equal(2, assignedWorkload.ToDoTasks);
             Assert.Equal(1, assignedWorkload.InProgressTasks);
             Assert.Equal(2, assignedWorkload.CompletedTasks);
             Assert.Equal(1, assignedWorkload.OverdueTasks);
@@ -333,7 +381,8 @@ public sealed class DashboardHttpIntegrationTests
         string title,
         TaskStatus status,
         DateTime? dueDateUtc,
-        DateTime createdAtUtc)
+        DateTime createdAtUtc,
+        TaskPriority priority = TaskPriority.Medium)
     {
         return new TaskItem
         {
@@ -343,7 +392,7 @@ public sealed class DashboardHttpIntegrationTests
             AssignedToUserId = assignedToUserId,
             Title = title,
             Status = status,
-            Priority = TaskPriority.Medium,
+            Priority = priority,
             DueDateUtc = dueDateUtc,
             CreatedAtUtc = createdAtUtc
         };

@@ -482,3 +482,10 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local environment overrides and secrets
+.env.*
+!.env.example
+**/secrets.json
+/.tmp-db-backup/
+/.tmp-db-inspector-*/

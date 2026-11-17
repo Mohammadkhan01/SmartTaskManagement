@@ -1,4 +1,3 @@
-
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +8,7 @@ namespace SmartTask.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/projects")]
+[Route("api/v1/projects")]
 public sealed class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projectService;
@@ -27,9 +26,9 @@ public sealed class ProjectsController : ControllerBase
         [FromQuery] ProjectListQueryRequest query,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = GetCurrentUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var projects = await _projectService.GetPagedMyProjectsAsync(
@@ -44,13 +43,14 @@ public sealed class ProjectsController : ControllerBase
     [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ProjectResponse>> Create(
         [FromBody] CreateProjectRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = GetCurrentUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var project = await _projectService.CreateAsync(
@@ -64,14 +64,15 @@ public sealed class ProjectsController : ControllerBase
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ProjectResponse>> GetById(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = GetCurrentUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var project = await _projectService.GetByIdAsync(
@@ -89,6 +90,7 @@ public sealed class ProjectsController : ControllerBase
     [ProducesResponseType(typeof(ProjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ProjectResponse>> Update(
@@ -96,9 +98,9 @@ public sealed class ProjectsController : ControllerBase
         [FromBody] UpdateProjectRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = GetCurrentUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var project = await _projectService.UpdateAsync(
@@ -116,14 +118,15 @@ public sealed class ProjectsController : ControllerBase
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = GetCurrentUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var deleted = await _projectService.DeleteAsync(
@@ -135,5 +138,92 @@ public sealed class ProjectsController : ControllerBase
             return NotFound();
 
         return NoContent();
+    }
+
+    [HttpGet("{id:guid}/members")]
+    [ProducesResponseType(typeof(IReadOnlyList<ProjectMemberResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<ProjectMemberResponse>>> GetMembers(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+            return Unauthorized();
+
+        var members = await _projectService.GetMembersAsync(
+            id,
+            userId,
+            cancellationToken);
+
+        if (members is null)
+            return NotFound();
+
+        return Ok(members);
+    }
+
+    [HttpPost("{id:guid}/members")]
+    [ProducesResponseType(typeof(ProjectMemberResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProjectMemberResponse>> AddMember(
+        Guid id,
+        [FromBody] AddProjectMemberRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+            return Unauthorized();
+
+        var member = await _projectService.AddMemberAsync(
+            id,
+            request,
+            userId,
+            cancellationToken);
+
+        if (member is null)
+            return NotFound();
+
+        return StatusCode(StatusCodes.Status201Created, member);
+    }
+
+    [HttpDelete("{id:guid}/members/{userId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveMember(
+        Guid id,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var requesterUserId = GetCurrentUserId();
+
+        if (requesterUserId is null)
+            return Unauthorized();
+
+        var removed = await _projectService.RemoveMemberAsync(
+            id,
+            userId,
+            requesterUserId,
+            cancellationToken);
+
+        if (!removed)
+            return NotFound();
+
+        return NoContent();
+    }
+
+    private string? GetCurrentUserId()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
     }
 }

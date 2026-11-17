@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -60,7 +61,7 @@ public sealed class TaskHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Task Integration Test Project",
-                    OwnerId = managerId
+                    CreatedByUserId = managerId
                 });
 
                 context.ProjectMembers.AddRange(
@@ -68,19 +69,19 @@ public sealed class TaskHttpIntegrationTests
                     {
                         ProjectId = projectId,
                         UserId = managerId,
-                        Role = ProjectMemberRole.Manager
+                        ProjectRole = ProjectMemberRole.Manager
                     },
                     new ProjectMember
                     {
                         ProjectId = projectId,
                         UserId = assignedUserId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     },
                     new ProjectMember
                     {
                         ProjectId = projectId,
                         UserId = memberId,
-                        Role = ProjectMemberRole.Member
+                        ProjectRole = ProjectMemberRole.Member
                     });
 
                 await context.SaveChangesAsync();
@@ -98,7 +99,7 @@ public sealed class TaskHttpIntegrationTests
             };
 
             var createResponse = await client.PostAsJsonAsync(
-                $"/api/projects/{projectId}/tasks",
+                $"/api/v1/projects/{projectId}/tasks",
                 createRequest);
 
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -118,7 +119,7 @@ public sealed class TaskHttpIntegrationTests
             AuthenticateAs(client, memberId);
 
             var listResponse = await client.GetAsync(
-                $"/api/projects/{projectId}/tasks");
+                $"/api/v1/projects/{projectId}/tasks");
 
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
@@ -183,7 +184,7 @@ public sealed class TaskHttpIntegrationTests
 
             // 2b. Search and combined filters execute against SQL Server.
             var filteredResponse = await client.GetAsync(
-                $"/api/projects/{projectId}/tasks?search=release&status=InProgress&priority=High&assignedToUserId={memberId}");
+                $"/api/v1/projects/{projectId}/tasks?search=release&status=InProgress&priority=High&assignedToUserId={memberId}");
 
             Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
 
@@ -197,7 +198,7 @@ public sealed class TaskHttpIntegrationTests
 
             // 2c. Sorting and pagination return the expected ordered page.
             var pagedResponse = await client.GetAsync(
-                $"/api/projects/{projectId}/tasks?pageNumber=1&pageSize=2&sortBy=title&sortDescending=false");
+                $"/api/v1/projects/{projectId}/tasks?pageNumber=1&pageSize=2&sortBy=title&sortDescending=false");
 
             Assert.Equal(HttpStatusCode.OK, pagedResponse.StatusCode);
 
@@ -215,7 +216,7 @@ public sealed class TaskHttpIntegrationTests
 
             // 2d. Due-date range filtering returns only matching tasks.
             var dueDateResponse = await client.GetAsync(
-                $"/api/projects/{projectId}/tasks?dueDateFromUtc=2026-11-17T00:00:00Z&dueDateToUtc=2026-11-18T23:59:59Z");
+                $"/api/v1/projects/{projectId}/tasks?dueDateFromUtc=2026-11-17T00:00:00Z&dueDateToUtc=2026-11-18T23:59:59Z");
 
             Assert.Equal(HttpStatusCode.OK, dueDateResponse.StatusCode);
 
@@ -231,7 +232,7 @@ public sealed class TaskHttpIntegrationTests
             AuthenticateAs(client, outsiderId);
 
             var outsiderListResponse = await client.GetAsync(
-                $"/api/projects/{projectId}/tasks");
+                $"/api/v1/projects/{projectId}/tasks");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -241,7 +242,7 @@ public sealed class TaskHttpIntegrationTests
             AuthenticateAs(client, memberId);
 
             var getResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}");
+                $"/api/v1/tasks/{taskId}");
 
             Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
@@ -249,7 +250,7 @@ public sealed class TaskHttpIntegrationTests
             AuthenticateAs(client, outsiderId);
 
             var outsiderGetResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}");
+                $"/api/v1/tasks/{taskId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -264,8 +265,8 @@ public sealed class TaskHttpIntegrationTests
                 RowVersion = createdTask.RowVersion
             };
 
-            var statusResponse = await client.PatchAsJsonAsync(
-                $"/api/tasks/{taskId}/status",
+            var statusResponse = await client.PutAsJsonAsync(
+                $"/api/v1/tasks/{taskId}/status",
                 statusRequest);
 
             Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
@@ -287,8 +288,8 @@ public sealed class TaskHttpIntegrationTests
                 RowVersion = statusUpdatedTask.RowVersion
             };
 
-            var unauthorizedStatusResponse = await client.PatchAsJsonAsync(
-                $"/api/tasks/{taskId}/status",
+            var unauthorizedStatusResponse = await client.PutAsJsonAsync(
+                $"/api/v1/tasks/{taskId}/status",
                 unauthorizedStatusRequest);
 
             Assert.Equal(
@@ -308,7 +309,7 @@ public sealed class TaskHttpIntegrationTests
             };
 
             var updateResponse = await client.PutAsJsonAsync(
-                $"/api/tasks/{taskId}",
+                $"/api/v1/tasks/{taskId}",
                 updateRequest);
 
             Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -322,7 +323,7 @@ public sealed class TaskHttpIntegrationTests
 
             // 9. A manager can delete a task.
             var deleteResponse = await client.DeleteAsync(
-                $"/api/tasks/{taskId}");
+                $"/api/v1/tasks/{taskId}");
 
             Assert.Equal(
                 HttpStatusCode.NoContent,
@@ -332,7 +333,7 @@ public sealed class TaskHttpIntegrationTests
             AuthenticateAs(client, memberId);
 
             var deletedTaskResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}");
+                $"/api/v1/tasks/{taskId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -342,6 +343,150 @@ public sealed class TaskHttpIntegrationTests
         {
             await CleanupAsync(options, projectId,
                 managerId, assignedUserId, memberId, outsiderId);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task AssignTask_AsProjectManager_PersistsAssignmentAndNotification()
+    {
+        var connectionString =
+            Environment.GetEnvironmentVariable(
+                "SMARTTASK_TEST_CONNECTION_STRING")!;
+
+        var connectionBuilder =
+            new SqlConnectionStringBuilder(connectionString);
+
+        Assert.Equal("SmartTaskTestDb", connectionBuilder.InitialCatalog);
+
+        await using var factory =
+            new ProjectTestWebApplicationFactory(connectionString);
+
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost")
+            });
+
+        var options = new DbContextOptionsBuilder<SmartTaskDbContext>()
+            .UseSqlServer(connectionString)
+            .Options;
+
+        var managerId = Guid.NewGuid().ToString();
+        var assigneeId = Guid.NewGuid().ToString();
+        var projectId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+
+        try
+        {
+            byte[] originalRowVersion;
+
+            await using (var context = new SmartTaskDbContext(options))
+            {
+                context.Users.AddRange(
+                    CreateUser(managerId),
+                    CreateUser(assigneeId));
+
+                var managerRole = await context.Roles
+                    .SingleAsync(role =>
+                        role.NormalizedName == "PROJECT MANAGER");
+
+                context.UserRoles.Add(new IdentityUserRole<string>
+                {
+                    UserId = managerId,
+                    RoleId = managerRole.Id
+                });
+
+                context.Projects.Add(new Project
+                {
+                    Id = projectId,
+                    Name = "Task Assignment Integration Project",
+                    CreatedByUserId = managerId,
+                    Status = ProjectStatus.Active
+                });
+
+                context.ProjectMembers.AddRange(
+                    new ProjectMember
+                    {
+                        ProjectId = projectId,
+                        UserId = managerId,
+                        ProjectRole = ProjectMemberRole.Manager
+                    },
+                    new ProjectMember
+                    {
+                        ProjectId = projectId,
+                        UserId = assigneeId,
+                        ProjectRole = ProjectMemberRole.Member
+                    });
+
+                context.Tasks.Add(new TaskItem
+                {
+                    Id = taskId,
+                    ProjectId = projectId,
+                    Title = "Assignment Integration Test",
+                    CreatedByUserId = managerId,
+                    Priority = TaskPriority.High
+                });
+
+                await context.SaveChangesAsync();
+
+                var task = await context.Tasks
+                    .AsNoTracking()
+                    .SingleAsync(t => t.Id == taskId);
+
+                originalRowVersion = task.RowVersion.ToArray();
+            }
+
+            AuthenticateAs(client, managerId);
+
+            var request = new AssignTaskRequest
+            {
+                AssignedToUserId = assigneeId,
+                RowVersion = Convert.ToBase64String(originalRowVersion)
+            };
+
+            var response = await client.PutAsJsonAsync(
+                $"/api/v1/tasks/{taskId}/assign",
+                request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var responseTask =
+                await response.Content.ReadFromJsonAsync<TaskResponse>();
+
+            Assert.NotNull(responseTask);
+            Assert.Equal(taskId, responseTask.Id);
+            Assert.Equal(assigneeId, responseTask.AssignedToUserId);
+            Assert.False(string.IsNullOrWhiteSpace(responseTask.RowVersion));
+            Assert.NotEqual(
+                Convert.ToBase64String(originalRowVersion),
+                responseTask.RowVersion);
+
+            await using (var verificationContext =
+                new SmartTaskDbContext(options))
+            {
+                var persistedTask = await verificationContext.Tasks
+                    .AsNoTracking()
+                    .SingleAsync(t => t.Id == taskId);
+
+                Assert.Equal(assigneeId, persistedTask.AssignedToUserId);
+                Assert.NotEqual(
+                    originalRowVersion,
+                    persistedTask.RowVersion);
+
+                var notification = await verificationContext.Notifications
+                    .AsNoTracking()
+                    .SingleAsync(n =>
+                        n.RecipientUserId == assigneeId &&
+                        n.RelatedEntityId == taskId &&
+                        n.RelatedEntityType == "Task");
+
+                Assert.Equal("TaskAssigned", notification.Type);
+                Assert.Equal("Task assigned to you", notification.Title);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(options, projectId, managerId, assigneeId);
         }
     }
 
@@ -387,14 +532,14 @@ public sealed class TaskHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Task Concurrency Project",
-                    OwnerId = managerId
+                    CreatedByUserId = managerId
                 });
 
                 context.ProjectMembers.Add(new ProjectMember
                 {
                     ProjectId = projectId,
                     UserId = managerId,
-                    Role = ProjectMemberRole.Manager
+                    ProjectRole = ProjectMemberRole.Manager
                 });
 
                 var task = new TaskItem
@@ -436,7 +581,7 @@ public sealed class TaskHttpIntegrationTests
                 RowVersion = Convert.ToBase64String(originalRowVersion)
             };
             var response = await client.PutAsJsonAsync(
-                $"/api/tasks/{taskId}",
+                $"/api/v1/tasks/{taskId}",
                 request);
 
             var responseBody = await response.Content.ReadAsStringAsync();
@@ -494,14 +639,14 @@ public sealed class TaskHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Task Status Concurrency Project",
-                    OwnerId = managerId
+                    CreatedByUserId = managerId
                 });
 
                 context.ProjectMembers.Add(new ProjectMember
                 {
                     ProjectId = projectId,
                     UserId = managerId,
-                    Role = ProjectMemberRole.Manager
+                    ProjectRole = ProjectMemberRole.Manager
                 });
 
                 var task = new TaskItem
@@ -540,8 +685,8 @@ public sealed class TaskHttpIntegrationTests
                 RowVersion = Convert.ToBase64String(originalRowVersion)
             };
 
-            var response = await client.PatchAsJsonAsync(
-                $"/api/tasks/{taskId}/status",
+            var response = await client.PutAsJsonAsync(
+                $"/api/v1/tasks/{taskId}/status",
                 request);
 
             var responseBody = await response.Content.ReadAsStringAsync();
@@ -630,6 +775,12 @@ await using (var verificationContext = new SmartTaskDbContext(options))
             .ToListAsync();
 
         context.Notifications.RemoveRange(notifications);
+
+        var userRoles = await context.UserRoles
+            .Where(userRole => userIds.Contains(userRole.UserId))
+            .ToListAsync();
+
+        context.UserRoles.RemoveRange(userRoles);
 
         var users = await context.Users
             .Where(u => userIds.Contains(u.Id))

@@ -39,7 +39,7 @@ public class RepositoryTests
         {
             Name = "Smart Task Project",
             Description = "Repository test",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         var repository = new ProjectRepository(context);
@@ -51,7 +51,7 @@ public class RepositoryTests
 
         Assert.NotNull(result);
         Assert.Equal("Smart Task Project", result.Name);
-        Assert.Equal(owner.Id, result.OwnerId);
+        Assert.Equal(owner.Id, result.CreatedByUserId);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class RepositoryTests
         var project = new Project
         {
             Name = "Deleted Project",
-            OwnerId = owner.Id,
+            CreatedByUserId = owner.Id,
             IsDeleted = true,
             DeletedAtUtc = DateTime.UtcNow
         };
@@ -94,13 +94,13 @@ public class RepositoryTests
         var project1 = new Project
         {
             Name = "User Project",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         var project2 = new Project
         {
             Name = "Another User Project",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         context.Projects.AddRange(project1, project2);
@@ -142,7 +142,7 @@ public class RepositoryTests
         var project = new Project
         {
             Name = "Membership Test",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         context.Projects.Add(project);
@@ -179,7 +179,7 @@ public class RepositoryTests
         var project = new Project
         {
             Name = "Task Test Project",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         context.Projects.Add(project);
@@ -203,4 +203,59 @@ public class RepositoryTests
         Assert.Equal("Implement repository tests", result.Title);
         Assert.Equal(project.Id, result.ProjectId);
     }
+
+    [Fact]
+    public async Task TaskRepository_ShouldExcludeSoftDeletedTasksAndDeletedProjects()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser("owner-task-soft-delete");
+        context.Users.Add(owner);
+
+        var activeProject = new Project
+        {
+            Name = "Active Project",
+            CreatedByUserId = owner.Id
+        };
+
+        var deletedProject = new Project
+        {
+            Name = "Deleted Project",
+            CreatedByUserId = owner.Id,
+            IsDeleted = true,
+            DeletedAtUtc = DateTime.UtcNow
+        };
+
+        context.Projects.AddRange(activeProject, deletedProject);
+
+        var softDeletedTask = new TaskItem
+        {
+            ProjectId = activeProject.Id,
+            Project = activeProject,
+            Title = "Soft deleted task",
+            CreatedByUserId = owner.Id,
+            IsDeleted = true,
+            DeletedAtUtc = DateTime.UtcNow
+        };
+
+        var taskInDeletedProject = new TaskItem
+        {
+            ProjectId = deletedProject.Id,
+            Project = deletedProject,
+            Title = "Task in deleted project",
+            CreatedByUserId = owner.Id
+        };
+
+        context.Tasks.AddRange(softDeletedTask, taskInDeletedProject);
+        await context.SaveChangesAsync();
+
+        var repository = new TaskRepository(context);
+
+        Assert.Null(await repository.GetByIdAsync(softDeletedTask.Id));
+        Assert.Null(await repository.GetByIdAsync(taskInDeletedProject.Id));
+
+        Assert.Empty(await repository.GetByProjectIdAsync(activeProject.Id));
+        Assert.Empty(await repository.GetByProjectIdAsync(deletedProject.Id));
+    }
+
 }

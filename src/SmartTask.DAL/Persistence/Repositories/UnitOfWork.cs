@@ -1,3 +1,5 @@
+using System.Data;
+using Microsoft.EntityFrameworkCore;
 using SmartTask.BLL.Interfaces.Repositories;
 
 namespace SmartTask.DAL.Persistence.Repositories;
@@ -9,6 +11,28 @@ public class UnitOfWork : IUnitOfWork
     public UnitOfWork(SmartTaskDbContext context)
     {
         _context = context;
+    }
+
+
+    public async Task ExecuteInTransactionAsync(
+        Func<CancellationToken, Task> operation,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction =
+            await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken);
+
+        try
+        {
+            await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public Task<int> SaveChangesAsync(

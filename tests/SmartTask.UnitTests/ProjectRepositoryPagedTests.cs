@@ -44,7 +44,7 @@ public class ProjectRepositoryPagedTests
         {
             Name = "Alpha Project",
             Description = "First project",
-            OwnerId = owner.Id,
+            CreatedByUserId = owner.Id,
             Status = ProjectStatus.Active
         };
 
@@ -52,7 +52,7 @@ public class ProjectRepositoryPagedTests
         {
             Name = "Beta Project",
             Description = "Second project",
-            OwnerId = owner.Id,
+            CreatedByUserId = owner.Id,
             Status = ProjectStatus.Active
         };
 
@@ -60,14 +60,14 @@ public class ProjectRepositoryPagedTests
         {
             Name = "Gamma Project",
             Description = "Third project",
-            OwnerId = owner.Id,
+            CreatedByUserId = owner.Id,
             Status = ProjectStatus.Completed
         };
 
         var hidden = new Project
         {
             Name = "Hidden Project",
-            OwnerId = owner.Id,
+            CreatedByUserId = owner.Id,
             Status = ProjectStatus.Active,
             IsDeleted = true,
             DeletedAtUtc = DateTime.UtcNow
@@ -117,13 +117,13 @@ public class ProjectRepositoryPagedTests
         var memberProject = new Project
         {
             Name = "Member Project",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         var otherProject = new Project
         {
             Name = "Other Project",
-            OwnerId = owner.Id
+            CreatedByUserId = owner.Id
         };
 
         context.Projects.AddRange(memberProject, otherProject);

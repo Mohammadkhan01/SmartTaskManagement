@@ -91,6 +91,67 @@ public class ProjectRepository : IProjectRepository
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<Project>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Projects
+            .AsNoTracking()
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<(IReadOnlyList<Project> Items, int TotalCount)>
+        GetPagedAllAsync(
+            ProjectListQueryRequest query,
+            CancellationToken cancellationToken = default)
+    {
+        IQueryable<Project> projects = _context.Projects.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim();
+
+            projects = projects.Where(p =>
+                p.Name.Contains(search) ||
+                (p.Description != null && p.Description.Contains(search)));
+        }
+
+        if (query.Status.HasValue)
+        {
+            projects = projects.Where(p => p.Status == query.Status.Value);
+        }
+
+        var totalCount = await projects.CountAsync(cancellationToken);
+        var sortBy = query.SortBy.Trim().ToLowerInvariant();
+
+        IOrderedQueryable<Project> orderedProjects = sortBy switch
+        {
+            "createdat" => query.SortDescending
+                ? projects.OrderByDescending(p => p.CreatedAtUtc)
+                : projects.OrderBy(p => p.CreatedAtUtc),
+            "updatedat" => query.SortDescending
+                ? projects.OrderByDescending(p => p.UpdatedAtUtc)
+                : projects.OrderBy(p => p.UpdatedAtUtc),
+            "name" => query.SortDescending
+                ? projects.OrderByDescending(p => p.Name)
+                : projects.OrderBy(p => p.Name),
+            "status" => query.SortDescending
+                ? projects.OrderByDescending(p => p.Status)
+                : projects.OrderBy(p => p.Status),
+            _ => projects.OrderByDescending(p => p.CreatedAtUtc)
+        };
+
+        var skip = (int)((long)(query.PageNumber - 1) * query.PageSize);
+
+        var items = await orderedProjects
+            .ThenBy(p => p.Id)
+            .Skip(skip)
+            .Take(query.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
     public void Add(Project project)
     {
         _context.Projects.Add(project);

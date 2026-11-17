@@ -133,6 +133,30 @@ public class GlobalExceptionHandlerTests
 
 
 [Fact]
+public async Task TryHandleAsync_UnauthorizedException_ReturnsGeneric401Message()
+{
+    var context = new DefaultHttpContext();
+    context.Response.Body = new MemoryStream();
+
+    var handled = await CreateHandler().TryHandleAsync(
+        context,
+        new UnauthorizedAccessException("Specific credential failure detail."),
+        CancellationToken.None);
+
+    context.Response.Body.Position = 0;
+
+    using var reader = new StreamReader(context.Response.Body);
+    var response = await reader.ReadToEndAsync();
+
+    Assert.True(handled);
+    Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+    Assert.Contains(
+        "The supplied authentication credentials are invalid or expired.",
+        response);
+    Assert.DoesNotContain("Specific credential failure detail.", response);
+}
+
+[Fact]
 public async Task TryHandleAsync_ResponseAlreadyStarted_ReturnsFalse()
 {
     var context = new DefaultHttpContext();

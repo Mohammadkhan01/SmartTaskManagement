@@ -4,6 +4,13 @@ namespace SmartTask.BLL.Interfaces.Repositories;
 
 public interface IDashboardRepository
 {
+    Task<DashboardTaskStatisticsResponse> GetMyTaskStatisticsAsync(
+        string userId,
+        DateTime nowUtc,
+        DateTime upcomingCutoffUtc,
+        int upcomingTaskCount,
+        CancellationToken cancellationToken = default);
+
     Task<DashboardSummaryResponse> GetMyDashboardAsync(
         string userId,
         DateTime nowUtc,

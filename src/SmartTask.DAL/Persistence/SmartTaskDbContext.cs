@@ -37,6 +37,10 @@ public class SmartTaskDbContext : IdentityDbContext<ApplicationUser>
             .Property(u => u.DisplayName)
             .HasMaxLength(150);
 
+        builder.Entity<ApplicationUser>()
+            .Property(u => u.IsActive)
+            .HasDefaultValue(true);
+
         builder.ApplyConfigurationsFromAssembly(
             typeof(SmartTaskDbContext).Assembly);
     }

@@ -4,6 +4,10 @@ namespace SmartTask.BLL.Interfaces.Services;
 
 public interface IDashboardService
 {
+    Task<DashboardTaskStatisticsResponse> GetMyTaskStatisticsAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<DashboardSummaryResponse> GetMyDashboardAsync(
         string userId,
         CancellationToken cancellationToken = default);

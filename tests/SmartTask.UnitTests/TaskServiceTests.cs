@@ -13,7 +13,9 @@ namespace SmartTask.UnitTests;
 public class TaskServiceTests
 {
     private readonly FakeTaskRepository _tasks = new();
+    private readonly FakeProjectRepository _projects = new();
     private readonly FakeProjectMemberRepository _members = new();
+    private readonly FakeUserAccountRepository _users = new();
     private readonly FakeNotificationRepository _notifications = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -21,12 +23,15 @@ public class TaskServiceTests
     {
         return new TaskService(
             _tasks,
+            _projects,
             _members,
+            _users,
             _notifications,
             _unitOfWork,
             new CreateTaskRequestValidator(),
             new UpdateTaskRequestValidator(),
             new UpdateTaskStatusRequestValidator(),
+            new AssignTaskRequestValidator(),
             new SmartTask.BLL.Validators.TaskListQueryRequestValidator());
     }
 
@@ -39,8 +44,33 @@ public class TaskServiceTests
         {
             ProjectId = projectId,
             UserId = userId,
-            Role = role
+            ProjectRole = role
         });
+
+        if (!_users.AddedAccounts.Any(account => account.Id == userId))
+        {
+            _users.AddedAccounts.Add(new UserAccount
+            {
+                Id = userId,
+                DisplayName = userId,
+                Email = $"{userId}@example.test",
+                IsActive = true
+            });
+        }
+    }
+
+    private void AddGlobalRole(string userId, string role)
+    {
+        var existingRoles = _users.Roles.TryGetValue(userId, out var roles)
+            ? roles.ToList()
+            : [];
+
+        if (!existingRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
+        {
+            existingRoles.Add(role);
+        }
+
+        _users.Roles[userId] = existingRoles;
     }
 
     private TaskItem CreateTask(
@@ -58,6 +88,18 @@ public class TaskServiceTests
         };
 
         _tasks.AddedTasks.Add(task);
+
+        if (!_projects.AddedProjects.Any(project => project.Id == task.ProjectId))
+        {
+            _projects.AddedProjects.Add(new Project
+            {
+                Id = task.ProjectId,
+                Name = "Test project",
+                Status = ProjectStatus.Active,
+                CreatedByUserId = "manager-123"
+            });
+        }
+
         return task;
     }
 
@@ -66,7 +108,16 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
         AddMember(projectId, "member-123");
+
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Test project",
+            Status = ProjectStatus.Active,
+            CreatedByUserId = "manager-123"
+        });
 
         var service = CreateService();
 
@@ -121,6 +172,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
 
         var service = CreateService();
 
@@ -139,6 +191,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
 
         var service = CreateService();
 
@@ -161,6 +214,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
 
         var task = CreateTask(projectId);
 
@@ -197,6 +251,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
 
         CreateTask(projectId);
         CreateTask(projectId);
@@ -228,6 +283,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
 
         var service = CreateService();
 
@@ -257,6 +313,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
 
         var task = CreateTask(projectId);
 
@@ -290,6 +347,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
 
         var task = CreateTask(projectId);
         var rowVersion = Convert.ToBase64String(task.RowVersion);
@@ -320,6 +378,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
         AddMember(projectId, "new-member-123");
 
         var task = CreateTask(projectId, "old-member-123");
@@ -374,10 +433,125 @@ public class TaskServiceTests
     }
 
     [Fact]
+    public async Task AssignAsync_ShouldAssignTaskAndNotifyAssignee()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "member-123");
+        _users.Roles["manager-123"] = ["Project Manager"];
+
+        var task = CreateTask(projectId);
+        var rowVersion = Convert.ToBase64String(task.RowVersion);
+
+        var result = await CreateService().AssignAsync(
+            task.Id,
+            new AssignTaskRequest
+            {
+                AssignedToUserId = "member-123",
+                RowVersion = rowVersion
+            },
+            "manager-123");
+
+        Assert.NotNull(result);
+        Assert.Equal("member-123", result.AssignedToUserId);
+        Assert.Equal("member-123", task.AssignedToUserId);
+        Assert.Equal(rowVersion, Convert.ToBase64String(
+            _tasks.ReceivedOriginalRowVersion!));
+
+        var notification = Assert.Single(_notifications.AddedNotifications);
+        Assert.Equal("member-123", notification.RecipientUserId);
+        Assert.Equal("TaskAssigned", notification.Type);
+        Assert.Equal(task.Id, notification.RelatedEntityId);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AssignAsync_ShouldRejectInactiveAssignee()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "inactive-member");
+        _users.Roles["manager-123"] = ["Project Manager"];
+
+        _users.AddedAccounts
+            .Single(account => account.Id == "inactive-member")
+            .IsActive = false;
+
+        var task = CreateTask(projectId);
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            CreateService().AssignAsync(
+                task.Id,
+                new AssignTaskRequest
+                {
+                    AssignedToUserId = "inactive-member",
+                    RowVersion = Convert.ToBase64String(task.RowVersion)
+                },
+                "manager-123"));
+
+        Assert.Null(task.AssignedToUserId);
+        Assert.Empty(_notifications.AddedNotifications);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AssignAsync_ShouldRejectCallerWithoutAssignmentPermission()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "member-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "target-member");
+
+        // Project membership alone does not grant the global Project Manager role.
+        var task = CreateTask(projectId);
+
+        var result = await CreateService().AssignAsync(
+            task.Id,
+            new AssignTaskRequest
+            {
+                AssignedToUserId = "target-member",
+                RowVersion = Convert.ToBase64String(task.RowVersion)
+            },
+            "member-123");
+
+        Assert.Null(result);
+        Assert.Null(task.AssignedToUserId);
+        Assert.Empty(_notifications.AddedNotifications);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AssignAsync_ShouldRejectInactiveProject()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "member-123");
+        _users.Roles["manager-123"] = ["Project Manager"];
+
+        var task = CreateTask(projectId);
+        _projects.AddedProjects.Single(project => project.Id == projectId)
+            .Status = ProjectStatus.OnHold;
+
+        var result = await CreateService().AssignAsync(
+            task.Id,
+            new AssignTaskRequest
+            {
+                AssignedToUserId = "member-123",
+                RowVersion = Convert.ToBase64String(task.RowVersion)
+            },
+            "manager-123");
+
+        Assert.Null(result);
+        Assert.Null(task.AssignedToUserId);
+        Assert.Empty(_notifications.AddedNotifications);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_ShouldAllowAssignedMember()
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
 
         var task = CreateTask(projectId, "member-123");
         var rowVersion = Convert.ToBase64String(task.RowVersion);
@@ -432,6 +606,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
 
         var task = CreateTask(projectId);
 
@@ -456,6 +631,7 @@ public class TaskServiceTests
     {
         var projectId = Guid.NewGuid();
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
 
         var task = CreateTask(projectId);
 
@@ -487,6 +663,119 @@ public class TaskServiceTests
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
+    private sealed class FakeProjectRepository : IProjectRepository
+    {
+        public List<Project> AddedProjects { get; } = [];
+
+        public Task<Project?> GetByIdAsync(
+            Guid projectId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedProjects.FirstOrDefault(project => project.Id == projectId));
+        }
+
+        public Task<IReadOnlyList<Project>> GetByMemberUserIdAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<Project> result = AddedProjects
+                .Where(project => project.Members.Any(member => member.UserId == userId))
+                .ToList();
+
+            return Task.FromResult(result);
+        }
+
+        public Task<(IReadOnlyList<Project> Items, int TotalCount)>
+            GetPagedByMemberUserIdAsync(
+                string userId,
+                SmartTask.BLL.DTOs.Projects.ProjectListQueryRequest query,
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<(IReadOnlyList<Project>, int)>(([], 0));
+        }
+
+        public Task<IReadOnlyList<Project>> GetAllAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Project>>(AddedProjects);
+        }
+
+        public Task<(IReadOnlyList<Project> Items, int TotalCount)> GetPagedAllAsync(
+            SmartTask.BLL.DTOs.Projects.ProjectListQueryRequest query,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<(IReadOnlyList<Project>, int)>(
+                (AddedProjects, AddedProjects.Count));
+        }
+
+        public void Add(Project project) => AddedProjects.Add(project);
+
+        public void Update(Project project) { }
+
+        public void SetOriginalRowVersion(Project project, byte[] rowVersion) { }
+    }
+
+    private sealed class FakeUserAccountRepository : IUserAccountRepository
+    {
+        public List<UserAccount> AddedAccounts { get; } = [];
+
+        public Dictionary<string, IReadOnlyList<string>> Roles { get; } = [];
+
+        public Task<(bool Succeeded, string UserId, IReadOnlyList<string> Errors)>
+            CreateUserAsync(
+                string displayName,
+                string email,
+                string password,
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<(bool, string, IReadOnlyList<string>)>(
+                (false, string.Empty, []));
+        }
+
+        public Task<UserAccount?> FindByEmailAsync(
+            string email,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedAccounts.FirstOrDefault(account => account.Email == email));
+        }
+
+        public Task<UserAccount?> FindByIdAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                AddedAccounts.FirstOrDefault(account => account.Id == userId));
+        }
+
+        public Task<bool> CheckPasswordAsync(
+            string userId,
+            string password,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<IReadOnlyList<string>> GetRolesAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                Roles.TryGetValue(userId, out var roles)
+                    ? roles
+                    : (IReadOnlyList<string>)[]);
+        }
+
+        public Task<(bool Succeeded, IReadOnlyList<string> Errors)> AddToRoleAsync(
+            string userId,
+            string role,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<(bool, IReadOnlyList<string>)>((false, []));
+        }
+    }
+
     private sealed class FakeTaskRepository : ITaskRepository
     {
         public List<TaskItem> AddedTasks { get; } = [];
@@ -498,7 +787,8 @@ public class TaskServiceTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(
-                AddedTasks.FirstOrDefault(t => t.Id == taskId));
+                AddedTasks.FirstOrDefault(
+                    t => t.Id == taskId && !t.IsDeleted));
         }
 
         public Task<IReadOnlyList<TaskItem>> GetByProjectIdAsync(
@@ -658,6 +948,13 @@ public class TaskServiceTests
         public int SaveChangesCallCount { get; private set; }
 
         public CancellationToken ReceivedCancellationToken { get; private set; }
+
+        public Task ExecuteInTransactionAsync(
+            Func<CancellationToken, Task> operation,
+            CancellationToken cancellationToken = default)
+        {
+            return operation(cancellationToken);
+        }
 
         public Task<int> SaveChangesAsync(
             CancellationToken cancellationToken = default)

@@ -1,5 +1,6 @@
 
 using FluentValidation;
+using SmartTask.BLL.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -54,12 +55,28 @@ if (exception is OperationCanceledException &&
                     Detail = "This resource was modified by another request. Reload it and try again."
                 },
 
+            ConflictException conflictException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Conflict",
+                    Detail = conflictException.Message
+                },
+
+            ForbiddenAccessException forbiddenException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status403Forbidden,
+                    Title = "Forbidden",
+                    Detail = forbiddenException.Message
+                },
+
             UnauthorizedAccessException =>
                 new ProblemDetails
                 {
                     Status = StatusCodes.Status401Unauthorized,
                     Title = "Unauthorized",
-                    Detail = "Invalid email or password."
+                    Detail = "The supplied authentication credentials are invalid or expired."
                 },
 
             ArgumentException argumentException =>

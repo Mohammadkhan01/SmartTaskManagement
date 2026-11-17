@@ -7,7 +7,7 @@ namespace SmartTask.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/dashboard")]
+[Route("api/v1/dashboard")]
 public sealed class DashboardController : ControllerBase
 {
     private readonly IDashboardService _dashboardService;
@@ -17,7 +17,25 @@ public sealed class DashboardController : ControllerBase
         _dashboardService = dashboardService;
     }
 
-    [HttpGet("me")]
+    [HttpGet("task-statistics")]
+    public async Task<IActionResult> GetMyTaskStatistics(
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var statistics = await _dashboardService.GetMyTaskStatisticsAsync(
+            userId,
+            cancellationToken);
+
+        return Ok(statistics);
+    }
+
+    [HttpGet("summary")]
     public async Task<IActionResult> GetMyDashboard(
         CancellationToken cancellationToken)
     {

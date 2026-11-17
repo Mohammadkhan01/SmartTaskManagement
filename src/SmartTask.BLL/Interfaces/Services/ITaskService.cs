@@ -32,6 +32,12 @@ public interface ITaskService
         string userId,
         CancellationToken cancellationToken = default);
 
+    Task<TaskResponse?> AssignAsync(
+        Guid taskId,
+        AssignTaskRequest request,
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<TaskResponse?> UpdateStatusAsync(
         Guid taskId,
         UpdateTaskStatusRequest request,

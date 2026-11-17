@@ -1,0 +1,4 @@
+# Database is managed externally by the existing azuresqledge container.
+# Do not create another SQL Server container.
+name: smarttask-management
+services: {}

@@ -55,7 +55,7 @@ public class TaskCommentServiceTests
         {
             ProjectId = projectId,
             UserId = userId,
-            Role = role
+            ProjectRole = role
         });
     }
 
@@ -504,6 +504,13 @@ public class TaskCommentServiceTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public int SaveChangesCallCount { get; private set; }
+
+        public Task ExecuteInTransactionAsync(
+            Func<CancellationToken, Task> operation,
+            CancellationToken cancellationToken = default)
+        {
+            return operation(cancellationToken);
+        }
 
         public Task<int> SaveChangesAsync(
             CancellationToken cancellationToken = default)

@@ -33,4 +33,21 @@ public interface IProjectService
         Guid projectId,
         string userId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProjectMemberResponse>?> GetMembersAsync(
+        Guid projectId,
+        string requesterUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<ProjectMemberResponse?> AddMemberAsync(
+        Guid projectId,
+        AddProjectMemberRequest request,
+        string requesterUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> RemoveMemberAsync(
+        Guid projectId,
+        string memberUserId,
+        string requesterUserId,
+        CancellationToken cancellationToken = default);
 }

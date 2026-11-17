@@ -178,6 +178,11 @@ namespace SmartTask.DAL.Persistence.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
 
@@ -336,6 +341,11 @@ namespace SmartTask.DAL.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -351,11 +361,6 @@ namespace SmartTask.DAL.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -370,47 +375,40 @@ namespace SmartTask.DAL.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerId");
+                    b.HasIndex("CreatedByUserId", "Status");
 
-                    b.HasIndex("OwnerId", "Status");
+                    b.HasIndex("Status", "CreatedAtUtc");
 
-                    b.ToTable("Projects", (string)null);
+                    b.ToTable("Projects", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Projects_Status", "[Status] IN (1, 2, 3, 4, 5)");
+                        });
                 });
 
             modelBuilder.Entity("SmartTask.Domain.Entities.ProjectMember", b =>
                 {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
+                    b.Property<Guid>("ProjectId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("JoinedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("ProjectRole")
+                        .HasColumnType("int")
+                        .HasColumnName("ProjectRole");
 
-                    b.Property<int>("Role")
-                        .HasColumnType("int");
+                    b.HasKey("ProjectId", "UserId");
 
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
+                    b.HasIndex("UserId", "ProjectId");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("ProjectId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("ProjectMembers", (string)null);
+                    b.ToTable("ProjectMembers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectMembers_ProjectRole", "[ProjectRole] IN (1, 2)");
+                        });
                 });
 
             modelBuilder.Entity("SmartTask.Domain.Entities.RefreshToken", b =>
@@ -424,26 +422,25 @@ namespace SmartTask.DAL.Persistence.Migrations
 
                     b.Property<string>("CreatedByIp")
                         .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
+                        .HasColumnType("varchar(45)");
 
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ReplacedByTokenHash")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                    b.Property<Guid?>("ReplacedByTokenId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("RevokedByIp")
                         .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
+                        .HasColumnType("varchar(45)");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("varchar(128)");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -456,6 +453,8 @@ namespace SmartTask.DAL.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("ReplacedByTokenId");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
@@ -716,7 +715,7 @@ namespace SmartTask.DAL.Persistence.Migrations
                 {
                     b.HasOne("SmartTask.DAL.Identity.ApplicationUser", null)
                         .WithMany()
-                        .HasForeignKey("OwnerId")
+                        .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -740,6 +739,11 @@ namespace SmartTask.DAL.Persistence.Migrations
 
             modelBuilder.Entity("SmartTask.Domain.Entities.RefreshToken", b =>
                 {
+                    b.HasOne("SmartTask.Domain.Entities.RefreshToken", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacedByTokenId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartTask.DAL.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using SmartTask.BLL.DTOs.Auth;
+using SmartTask.BLL.DTOs.Admin;
 using SmartTask.BLL.DTOs.Projects;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.BLL.Services.Auth;
@@ -14,6 +15,8 @@ using SmartTask.BLL.Services.TaskComments;
 using SmartTask.BLL.Services.TaskAttachments;
 using SmartTask.BLL.Services.Notifications;
 using SmartTask.BLL.Services.Dashboard;
+using SmartTask.BLL.Services.Admin;
+using SmartTask.BLL.Validators.Admin;
 
 namespace SmartTask.BLL;
 
@@ -22,6 +25,12 @@ public static class DependencyInjection
     public static IServiceCollection AddBll(
         this IServiceCollection services)
     {
+        // Admin services
+        services.AddScoped<IAdminUserService, AdminUserService>();
+        services.AddScoped<IValidator<AdminUserListQueryRequest>, AdminUserListQueryRequestValidator>();
+        services.AddScoped<IValidator<UpdateUserRoleRequest>, UpdateUserRoleRequestValidator>();
+        services.AddScoped<IValidator<UpdateUserStatusRequest>, UpdateUserStatusRequestValidator>();
+
         // Project services
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<
@@ -44,6 +53,9 @@ public static class DependencyInjection
         services.AddScoped<
             IValidator<LoginRequest>,
             LoginRequestValidator>();
+        services.AddScoped<
+            IValidator<RefreshTokenRequest>,
+            RefreshTokenRequestValidator>();
         // Task validators
         services.AddScoped<
             IValidator<CreateTaskRequest>,
@@ -52,6 +64,10 @@ public static class DependencyInjection
         services.AddScoped<
             IValidator<UpdateTaskRequest>,
             UpdateTaskRequestValidator>();
+
+        services.AddScoped<
+            IValidator<AssignTaskRequest>,
+            AssignTaskRequestValidator>();
 
         services.AddScoped<
             IValidator<UpdateTaskStatusRequest>,

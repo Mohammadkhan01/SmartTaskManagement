@@ -48,7 +48,7 @@ public class TaskAttachmentServiceTests
         {
             ProjectId = projectId,
             UserId = userId,
-            Role = role
+            ProjectRole = role
         });
     }
 
@@ -688,6 +688,13 @@ public async Task OpenDownloadAsync_ShouldReturnFileForProjectMember()
         public int SaveChangesCallCount { get; private set; }
 
         public Exception? SaveChangesException { get; set; }
+
+        public Task ExecuteInTransactionAsync(
+            Func<CancellationToken, Task> operation,
+            CancellationToken cancellationToken = default)
+        {
+            return operation(cancellationToken);
+        }
 
         public Task<int> SaveChangesAsync(
             CancellationToken cancellationToken = default)

@@ -82,7 +82,7 @@ public class DashboardServiceTests
             {
                 ProjectId = projectId,
                 UserId = "member-123",
-                Role = ProjectMemberRole.Member
+                ProjectRole = ProjectMemberRole.Member
             });
 
         var expected = new DashboardSummaryResponse
@@ -178,7 +178,7 @@ public class DashboardServiceTests
             {
                 ProjectId = projectId,
                 UserId = "manager-123",
-                Role = ProjectMemberRole.Manager
+                ProjectRole = ProjectMemberRole.Manager
             });
 
         IReadOnlyList<MemberWorkloadResponse> expected =
@@ -226,7 +226,7 @@ public class DashboardServiceTests
             {
                 ProjectId = projectId,
                 UserId = "member-123",
-                Role = ProjectMemberRole.Member
+                ProjectRole = ProjectMemberRole.Member
             });
 
         var result = await CreateService().GetProjectWorkloadAsync(
@@ -268,4 +268,55 @@ public class DashboardServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task GetMyTaskStatisticsAsync_ShouldUseAuthenticatedUserId()
+    {
+        var expected = new DashboardTaskStatisticsResponse
+        {
+            TotalTasks = 6,
+            CompletedTasks = 2,
+            PendingTasks = 3,
+            CompletionPercentage = 33.33m
+        };
+
+        _dashboardRepository
+            .Setup(repository => repository.GetMyTaskStatisticsAsync(
+                "user-123",
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                10,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var result = await CreateService().GetMyTaskStatisticsAsync("user-123");
+
+        Assert.Same(expected, result);
+
+        _dashboardRepository.Verify(repository =>
+            repository.GetMyTaskStatisticsAsync(
+                "user-123",
+                It.IsAny<DateTime>(),
+                It.Is<DateTime>(cutoff => cutoff > DateTime.UtcNow),
+                10,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetMyTaskStatisticsAsync_ShouldRejectEmptyUserId()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => CreateService().GetMyTaskStatisticsAsync(" "));
+
+        _dashboardRepository.Verify(repository =>
+            repository.GetMyTaskStatisticsAsync(
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
 }

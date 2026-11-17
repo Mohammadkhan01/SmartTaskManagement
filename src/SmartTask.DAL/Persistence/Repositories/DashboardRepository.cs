@@ -17,6 +17,80 @@ public sealed class DashboardRepository : IDashboardRepository
         _context = context;
     }
 
+    public async Task<DashboardTaskStatisticsResponse> GetMyTaskStatisticsAsync(
+        string userId,
+        DateTime nowUtc,
+        DateTime upcomingCutoffUtc,
+        int upcomingTaskCount,
+        CancellationToken cancellationToken = default)
+    {
+        var tasks = _context.Tasks
+            .AsNoTracking()
+            .Where(t => t.AssignedToUserId == userId);
+
+        var aggregate = await tasks
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalTasks = group.Count(),
+                ToDoTasks = group.Count(t => t.Status == TaskStatus.ToDo),
+                InProgressTasks = group.Count(t => t.Status == TaskStatus.InProgress),
+                CompletedTasks = group.Count(t => t.Status == TaskStatus.Completed),
+                CancelledTasks = group.Count(t => t.Status == TaskStatus.Cancelled),
+                LowPriorityTasks = group.Count(t => t.Priority == TaskPriority.Low),
+                MediumPriorityTasks = group.Count(t => t.Priority == TaskPriority.Medium),
+                HighPriorityTasks = group.Count(t => t.Priority == TaskPriority.High),
+                CriticalPriorityTasks = group.Count(t => t.Priority == TaskPriority.Critical)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var upcomingTasks = await tasks
+            .Where(t =>
+                t.DueDateUtc.HasValue &&
+                t.DueDateUtc.Value > nowUtc &&
+                t.DueDateUtc.Value <= upcomingCutoffUtc &&
+                t.Status != TaskStatus.Completed &&
+                t.Status != TaskStatus.Cancelled)
+            .OrderBy(t => t.DueDateUtc)
+            .ThenBy(t => t.Id)
+            .Take(upcomingTaskCount)
+            .Select(t => new DashboardTaskItemResponse
+            {
+                Id = t.Id,
+                ProjectId = t.ProjectId,
+                Title = t.Title,
+                Status = t.Status,
+                Priority = t.Priority,
+                DueDateUtc = t.DueDateUtc,
+                CreatedAtUtc = t.CreatedAtUtc,
+                UpdatedAtUtc = t.UpdatedAtUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalTasks = aggregate?.TotalTasks ?? 0;
+        var completedTasks = aggregate?.CompletedTasks ?? 0;
+        var toDoTasks = aggregate?.ToDoTasks ?? 0;
+        var inProgressTasks = aggregate?.InProgressTasks ?? 0;
+
+        return new DashboardTaskStatisticsResponse
+        {
+            TotalTasks = totalTasks,
+            ToDoTasks = toDoTasks,
+            InProgressTasks = inProgressTasks,
+            CompletedTasks = completedTasks,
+            CancelledTasks = aggregate?.CancelledTasks ?? 0,
+            PendingTasks = toDoTasks + inProgressTasks,
+            CompletionPercentage = totalTasks == 0
+                ? 0
+                : Math.Round(completedTasks * 100m / totalTasks, 2),
+            LowPriorityTasks = aggregate?.LowPriorityTasks ?? 0,
+            MediumPriorityTasks = aggregate?.MediumPriorityTasks ?? 0,
+            HighPriorityTasks = aggregate?.HighPriorityTasks ?? 0,
+            CriticalPriorityTasks = aggregate?.CriticalPriorityTasks ?? 0,
+            UpcomingTasks = upcomingTasks
+        };
+    }
+
     public async Task<DashboardSummaryResponse> GetMyDashboardAsync(
         string userId,
         DateTime nowUtc,

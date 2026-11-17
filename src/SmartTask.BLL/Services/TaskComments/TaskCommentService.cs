@@ -241,7 +241,7 @@ public class TaskCommentService : ITaskCommentService
         }
 
         var isAuthor = comment.UserId == userId;
-        var isManager = membership.Role == ProjectMemberRole.Manager;
+        var isManager = membership.ProjectRole == ProjectMemberRole.Manager;
 
         if (!isAuthor && !isManager)
         {
