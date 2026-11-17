@@ -29,10 +29,11 @@ public sealed class DatabaseHealthCheck : IHealthCheck
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             return HealthCheckResult.Unhealthy(
-                "Database connectivity check failed.");
+                "Database connectivity check failed.",
+                exception);
         }
     }
 }

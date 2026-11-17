@@ -1,21 +1,20 @@
-using SmartTask.DAL;
-using SmartTask.BLL;
-using SmartTask.API.Exceptions;
-using SmartTask.API.Authentication;
-using SmartTask.DAL.Identity;
-using SmartTask.API.Development;
-using Microsoft.Extensions.Options;
-using SmartTask.DAL.Storage;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Security.Claims;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using Serilog.Events;
+using SmartTask.API.Authentication;
+using SmartTask.API.Development;
+using SmartTask.API.Exceptions;
+using SmartTask.API.HealthChecks;
+using SmartTask.API.Http;
 using SmartTask.API.Logging;
 using SmartTask.API.OpenApi;
-using SmartTask.API.Http;
+using SmartTask.BLL;
 using SmartTask.BLL.Interfaces.Services;
-
+using SmartTask.DAL;
+using SmartTask.DAL.Identity;
+using SmartTask.DAL.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +33,7 @@ builder.Services.Configure<FileStorageOptions>(options =>
         "App_Data",
         "TaskAttachments");
 });
-// Register services.
+// The view services register the filter behind [ValidateAntiForgeryToken] on AuthController.
 builder.Services.AddControllersWithViews();
 builder.Services.AddOpenApi(options =>
 {
@@ -79,7 +78,7 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("Ai", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey:
-                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } userId
+                httpContext.User.GetUserId() is { } userId
                     ? $"user:{userId}"
                     : $"ip:{httpContext.Connection.RemoteIpAddress}",
             factory: _ => new FixedWindowRateLimiterOptions
@@ -149,9 +148,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks()
     .AddCheck(
         "self",
-        () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(),
+        () => HealthCheckResult.Healthy(),
         tags: ["live"])
-    .AddCheck<SmartTask.API.HealthChecks.DatabaseHealthCheck>(
+    .AddCheck<DatabaseHealthCheck>(
         "database",
         tags: ["ready"]);
 
@@ -175,6 +174,7 @@ if (app.Environment.IsDevelopment() &&
 }
 
 // Configure the HTTP request pipeline.
+app.UseSecurityHeaders();
 app.UseSerilogRequestLogging(RequestLoggingConfiguration.Configure);
 
 app.UseExceptionHandler();
