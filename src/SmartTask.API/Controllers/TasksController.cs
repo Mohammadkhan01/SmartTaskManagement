@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Tasks;
 using SmartTask.BLL.Interfaces.Services;
@@ -27,9 +27,9 @@ public sealed class TasksController : ControllerBase
         [FromQuery] TaskListQueryRequest query,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var tasks = await _taskService.GetPagedByProjectIdAsync(
@@ -51,9 +51,9 @@ public sealed class TasksController : ControllerBase
         [FromBody] CreateTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var task = await _taskService.CreateAsync(
@@ -76,9 +76,9 @@ public sealed class TasksController : ControllerBase
         Guid taskId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var task = await _taskService.GetByIdAsync(
@@ -103,9 +103,9 @@ public sealed class TasksController : ControllerBase
         [FromBody] UpdateTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var task = await _taskService.UpdateAsync(
@@ -131,9 +131,9 @@ public sealed class TasksController : ControllerBase
         [FromBody] AssignTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var task = await _taskService.AssignAsync(
@@ -159,9 +159,9 @@ public sealed class TasksController : ControllerBase
         [FromBody] UpdateTaskStatusRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var task = await _taskService.UpdateStatusAsync(
@@ -184,9 +184,9 @@ public sealed class TasksController : ControllerBase
         Guid taskId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var deleted = await _taskService.DeleteAsync(

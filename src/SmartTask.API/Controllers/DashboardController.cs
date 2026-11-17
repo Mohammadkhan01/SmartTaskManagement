@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.Interfaces.Services;
 
@@ -21,9 +21,9 @@ public sealed class DashboardController : ControllerBase
     public async Task<IActionResult> GetMyTaskStatistics(
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
         {
             return Unauthorized();
         }
@@ -39,9 +39,9 @@ public sealed class DashboardController : ControllerBase
     public async Task<IActionResult> GetMyDashboard(
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
         {
             return Unauthorized();
         }
@@ -58,9 +58,9 @@ public sealed class DashboardController : ControllerBase
         Guid projectId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
         {
             return Unauthorized();
         }
@@ -78,9 +78,9 @@ public sealed class DashboardController : ControllerBase
         Guid projectId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
         {
             return Unauthorized();
         }

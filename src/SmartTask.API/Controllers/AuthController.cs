@@ -32,11 +32,11 @@ public sealed class AuthController : ControllerBase
 
     [HttpGet("csrf")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetCsrfToken()
+    [ProducesResponseType(typeof(CsrfTokenResponse), StatusCodes.Status200OK)]
+    public ActionResult<CsrfTokenResponse> GetCsrfToken()
     {
         var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
-        return Ok(new { RequestToken = tokens.RequestToken });
+        return Ok(new CsrfTokenResponse { RequestToken = tokens.RequestToken ?? string.Empty });
     }
 
     [HttpPost("register")]
@@ -137,21 +137,22 @@ public sealed class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("me")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CurrentUserResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult GetCurrentUser()
+    public ActionResult<CurrentUserResponse> GetCurrentUser()
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var email = User.FindFirstValue(ClaimTypes.Email);
-        var roles = User.FindAll(ClaimTypes.Role)
-            .Select(claim => claim.Value)
-            .ToArray();
+        var userId = User.GetUserId();
 
-        return Ok(new
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(new CurrentUserResponse
         {
             UserId = userId,
-            Email = email,
-            Roles = roles
+            Email = User.FindFirstValue(ClaimTypes.Email),
+            Roles = User.FindAll(ClaimTypes.Role)
+                .Select(claim => claim.Value)
+                .ToArray()
         });
     }
 

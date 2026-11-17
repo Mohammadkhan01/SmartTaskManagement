@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Notifications;
 using SmartTask.BLL.Interfaces.Services;
@@ -28,9 +28,9 @@ public sealed class NotificationsController : ControllerBase
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var result = await _notificationService.GetMyNotificationsAsync(
@@ -53,9 +53,9 @@ public sealed class NotificationsController : ControllerBase
         Guid notificationId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var marked = await _notificationService.MarkAsReadAsync(
@@ -75,9 +75,9 @@ public sealed class NotificationsController : ControllerBase
     public async Task<IActionResult> MarkAllAsRead(
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var updatedCount = await _notificationService.MarkAllAsReadAsync(

@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.TaskComments;
 using SmartTask.BLL.Interfaces.Services;
@@ -25,9 +25,9 @@ public sealed class TaskCommentsController : ControllerBase
         Guid taskId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var comments = await _commentService.GetByTaskIdAsync(
@@ -51,9 +51,9 @@ public sealed class TaskCommentsController : ControllerBase
         [FromBody] CreateTaskCommentRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var comment = await _commentService.CreateAsync(
@@ -79,9 +79,9 @@ public sealed class TaskCommentsController : ControllerBase
         [FromBody] UpdateTaskCommentRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var comment = await _commentService.UpdateAsync(
@@ -104,9 +104,9 @@ public sealed class TaskCommentsController : ControllerBase
         Guid commentId,
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
             return Unauthorized();
 
         var deleted = await _commentService.DeleteAsync(

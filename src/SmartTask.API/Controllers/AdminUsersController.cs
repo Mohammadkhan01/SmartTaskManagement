@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Admin;
 using SmartTask.BLL.Interfaces.Services;
@@ -47,7 +47,7 @@ public sealed class AdminUsersController : ControllerBase
         [FromBody] UpdateUserStatusRequest request,
         CancellationToken cancellationToken)
     {
-        var actorUserId = GetCurrentUserId();
+        var actorUserId = User.GetUserId();
 
         if (actorUserId is null)
         {
@@ -81,7 +81,7 @@ public sealed class AdminUsersController : ControllerBase
         [FromBody] UpdateUserRoleRequest request,
         CancellationToken cancellationToken)
     {
-        var actorUserId = GetCurrentUserId();
+        var actorUserId = User.GetUserId();
 
         if (actorUserId is null)
         {
@@ -101,12 +101,5 @@ public sealed class AdminUsersController : ControllerBase
         }
 
         return Ok(response);
-    }
-
-    private string? GetCurrentUserId()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        return string.IsNullOrWhiteSpace(userId) ? null : userId;
     }
 }

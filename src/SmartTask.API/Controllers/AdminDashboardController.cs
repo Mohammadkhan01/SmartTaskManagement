@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Dashboard;
 using SmartTask.BLL.Interfaces.Services;
@@ -26,9 +26,9 @@ public sealed class AdminDashboardController : ControllerBase
     public async Task<ActionResult<AdminDashboardResponse>> GetAdminDashboard(
         CancellationToken cancellationToken)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
 
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId is null)
         {
             return Unauthorized();
         }

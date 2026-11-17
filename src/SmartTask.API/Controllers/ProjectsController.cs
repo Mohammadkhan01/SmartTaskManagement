@@ -1,5 +1,5 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using SmartTask.API.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Projects;
 using SmartTask.BLL.Interfaces.Services;
@@ -26,7 +26,7 @@ public sealed class ProjectsController : ControllerBase
         [FromQuery] ProjectListQueryRequest query,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -48,7 +48,7 @@ public sealed class ProjectsController : ControllerBase
         [FromBody] CreateProjectRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -70,7 +70,7 @@ public sealed class ProjectsController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -98,7 +98,7 @@ public sealed class ProjectsController : ControllerBase
         [FromBody] UpdateProjectRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -124,7 +124,7 @@ public sealed class ProjectsController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -149,7 +149,7 @@ public sealed class ProjectsController : ControllerBase
         Guid id,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -176,7 +176,7 @@ public sealed class ProjectsController : ControllerBase
         [FromBody] AddProjectMemberRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        var userId = User.GetUserId();
 
         if (userId is null)
             return Unauthorized();
@@ -203,7 +203,7 @@ public sealed class ProjectsController : ControllerBase
         string userId,
         CancellationToken cancellationToken)
     {
-        var requesterUserId = GetCurrentUserId();
+        var requesterUserId = User.GetUserId();
 
         if (requesterUserId is null)
             return Unauthorized();
@@ -218,12 +218,5 @@ public sealed class ProjectsController : ControllerBase
             return NotFound();
 
         return NoContent();
-    }
-
-    private string? GetCurrentUserId()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        return string.IsNullOrWhiteSpace(userId) ? null : userId;
     }
 }
