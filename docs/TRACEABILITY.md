@@ -26,11 +26,11 @@ Verification run used for this report (2026-11-17):
 
 | Suite | Result |
 |---|---|
-| `dotnet build SmartTaskManagement.sln` | 0 errors |
-| Unit tests (`UT`) | 262 passed |
+| `dotnet build SmartTaskManagement.sln` | 0 warnings, 0 errors |
+| Unit tests (`UT`) | 265 passed |
 | Architecture tests (`AT`) | 8 passed |
-| Integration tests (`scripts/run-integration-tests.sh`, SQL Server `SmartTaskTestDb`) | 48 passed |
-| Frontend (`npx ng test --watch=false`, Vitest) | 193 passed |
+| Integration tests (`scripts/run-integration-tests.sh`, SQL Server `SmartTaskTestDb`) | 49 passed |
+| Frontend (`npx ng test --watch=false`, Vitest) | 194 passed |
 | Frontend build (`npx ng build`) | succeeded |
 | Live API `GET https://localhost:7251/health` | 200 |
 | Performance smoke (`scripts/perf-smoke.sh`) | all Appendix G API targets met, see `docs/performance.md` |
@@ -79,7 +79,7 @@ Verification run used for this report (2026-11-17):
 | REQ-038 | Secure configuration | User secrets / env vars; `docker/.env` git-ignored; `JwtConfigurationTests` enforce key length; CI uses secrets/throwaway values | `UT/JwtConfigurationTests.cs`; source scan (no secrets in tracked config) | Done |
 | REQ-039 | Logging | Serilog host + `Logging/RequestLoggingConfiguration.cs` | `IT/SerilogRequestLoggingTests.cs` | Done |
 | REQ-040 | Health checks | `/health` with self + `DatabaseHealthCheck` | `IT/DatabaseHealthCheckTests.cs`; live `/health` 200 | Done |
-| REQ-041 | Angular | Angular 21 (`frontend/package.json`), TypeScript strict | `npx ng build`, 193 Vitest tests | Done |
+| REQ-041 | Angular | Angular 21 (`frontend/package.json`), TypeScript strict | `npx ng build`, 194 Vitest tests | Done |
 | REQ-042 | Standalone components | All components standalone; `app.config.ts` uses `provideRouter`/`provideHttpClient` | `fe/app.spec.ts`, component specs | Done |
 | REQ-043 | Authentication UI | `fe/features/auth/login.component.ts` (login + register), `core/auth/*` | `login.component.spec.ts`, `auth.service.spec.ts`, `session-store.spec.ts`; screenshot `01-register-password-rules.png` | Done |
 | REQ-044 | Dashboard UI | `fe/features/dashboard/dashboard.component.ts` | `dashboard.component.spec.ts`; screenshots `02-dashboard.png`, `08-…` | Done |
@@ -90,8 +90,8 @@ Verification run used for this report (2026-11-17):
 | REQ-049 | HTTP interceptors | `fe/core/interceptors/auth.interceptor.ts` (bearer, CSRF, refresh-on-401, error mapping) | `auth.interceptor.spec.ts`, `api-error.spec.ts` | Done |
 | REQ-050 | Reactive forms | `FormBuilder`/`FormGroup` in login, project and task forms | `login.component.spec.ts`, `task-form.component.spec.ts`, `projects.component.spec.ts` | Done |
 | REQ-051 | Lazy loading | `loadComponent` for every feature route in `app.routes.ts` | `app.routes.spec.ts`; `ng build` emits lazy chunks | Done |
-| REQ-052 | Unit tests | `tests/SmartTask.UnitTests`, `tests/SmartTask.ArchitectureTests`, `frontend/**/*.spec.ts` | 262 + 8 + 193 passing | Done |
-| REQ-053 | Integration tests | `tests/SmartTask.IntegrationTests` (WebApplicationFactory + real SQL Server), `scripts/run-integration-tests.sh`, CI service container | 48 passing | Done |
+| REQ-052 | Unit tests | `tests/SmartTask.UnitTests`, `tests/SmartTask.ArchitectureTests`, `frontend/**/*.spec.ts` | 265 + 8 + 194 passing | Done |
+| REQ-053 | Integration tests | `tests/SmartTask.IntegrationTests` (WebApplicationFactory + real SQL Server), `scripts/run-integration-tests.sh`, CI service container | 49 passing | Done |
 | REQ-054 | README | `README.md` | Claims cross-checked against code in this pass | Done |
 | REQ-055 | PROMPTS.md | `PROMPTS.md` | Matches `TaskDescriptionPrompt.cs` | Done |
 | REQ-056 | API collection | `docs/api/SmartTask.postman_collection.json` + environment, `docs/api/openapi.json` | Files present; OpenAPI regenerated from live API | Done |
@@ -195,9 +195,9 @@ See the security table above. All Done; HTTPS verified manually only.
 
 | Item | Status | Evidence |
 |---|---|---|
-| Unit tests pass | Done | 262 + 8 architecture |
-| Integration tests pass | Done | 48 |
-| Frontend tests pass | Done | 193 |
+| Unit tests pass | Done | 265 + 8 architecture |
+| Integration tests pass | Done | 49 |
+| Frontend tests pass | Done | 194 |
 | Failure paths tested | Done | 400/401/403/404/409/429/5xx tests across suites |
 | No known critical security defect | Done | None known |
 | No known critical functional defect | Done | None known |
