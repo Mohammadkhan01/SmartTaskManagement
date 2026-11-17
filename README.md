@@ -1,7 +1,6 @@
 # Smart Task Management System
 
-[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
-<!-- Replace <owner>/<repo> with the GitHub repository path once it is pushed. -->
+[![CI](https://github.com/Mohammadkhan01/SmartTaskManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohammadkhan01/SmartTaskManagement/actions/workflows/ci.yml)
 
 ## Project Overview
 
