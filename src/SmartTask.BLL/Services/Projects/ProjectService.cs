@@ -85,7 +85,7 @@ public class ProjectService : IProjectService
         _projectRepository.Add(project);
         _memberRepository.Add(managerMembership);
 
-        AddAuditLog(ownerId, "ProjectCreated", project.Id, new
+        AddAuditLog(ownerId, AuditActions.ProjectCreated, project.Id, new
         {
             Status = project.Status.ToString()
         });
@@ -259,14 +259,14 @@ public class ProjectService : IProjectService
             project.Status = request.Status.Value;
         }
 
-        AddAuditLog(userId, "ProjectUpdated", project.Id, new
+        AddAuditLog(userId, AuditActions.ProjectUpdated, project.Id, new
         {
             ChangedFields = changedFields
         });
 
         if (project.Status != previousStatus)
         {
-            AddAuditLog(userId, "ProjectStatusChanged", project.Id, new
+            AddAuditLog(userId, AuditActions.ProjectStatusChanged, project.Id, new
             {
                 PreviousStatus = previousStatus.ToString(),
                 NewStatus = project.Status.ToString()
@@ -305,7 +305,7 @@ public class ProjectService : IProjectService
         project.IsDeleted = true;
         project.DeletedAtUtc = DateTime.UtcNow;
 
-        AddAuditLog(userId, "ProjectDeleted", project.Id, new { });
+        AddAuditLog(userId, AuditActions.ProjectDeleted, project.Id, new { });
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -426,7 +426,7 @@ public class ProjectService : IProjectService
 
         _memberRepository.Add(membership);
 
-        AddAuditLog(requesterUserId, "ProjectMemberAdded", projectId, new
+        AddAuditLog(requesterUserId, AuditActions.ProjectMemberAdded, projectId, new
         {
             MemberUserId = user.Id,
             ProjectRole = membership.ProjectRole.ToString()
@@ -482,7 +482,7 @@ public class ProjectService : IProjectService
 
         _memberRepository.Remove(membership);
 
-        AddAuditLog(requesterUserId, "ProjectMemberRemoved", projectId, new
+        AddAuditLog(requesterUserId, AuditActions.ProjectMemberRemoved, projectId, new
         {
             MemberUserId = memberUserId
         });

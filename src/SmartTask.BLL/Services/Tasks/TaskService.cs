@@ -200,7 +200,7 @@ public class TaskService : ITaskService
 
         _taskRepository.Add(task);
 
-        AddAuditLog(userId, "TaskCreated", task.Id, new
+        AddAuditLog(userId, AuditActions.TaskCreated, task.Id, new
         {
             task.ProjectId,
             Priority = task.Priority.ToString(),
@@ -212,7 +212,7 @@ public class TaskService : ITaskService
             _notificationRepository.Add(new Notification
             {
                 RecipientUserId = assignedToUserId,
-                Type = "TaskAssigned",
+                Type = NotificationTypes.TaskAssigned,
                 Title = "Task assigned to you",
                 Message = $"You have been assigned the task '{task.Title}'.",
                 RelatedEntityId = task.Id,
@@ -297,7 +297,7 @@ public class TaskService : ITaskService
         task.AssignedToUserId = assignedToUserId;
         task.DueDateUtc = request.DueDateUtc;
 
-        AddAuditLog(userId, "TaskUpdated", task.Id, new
+        AddAuditLog(userId, AuditActions.TaskUpdated, task.Id, new
         {
             task.ProjectId,
             ChangedFields = changedFields
@@ -305,7 +305,7 @@ public class TaskService : ITaskService
 
         if (previousAssigneeId != assignedToUserId)
         {
-            AddAuditLog(userId, "TaskAssigned", task.Id, new
+            AddAuditLog(userId, AuditActions.TaskAssigned, task.Id, new
             {
                 task.ProjectId,
                 PreviousAssigneeId = previousAssigneeId,
@@ -321,8 +321,8 @@ public class TaskService : ITaskService
             {
                 RecipientUserId = assignedToUserId,
                 Type = previousAssigneeId is null
-                    ? "TaskAssigned"
-                    : "TaskReassigned",
+                    ? NotificationTypes.TaskAssigned
+                    : NotificationTypes.TaskReassigned,
                 Title = "Task assigned to you",
                 Message = $"You have been assigned the task '{task.Title}'.",
                 RelatedEntityId = task.Id,
@@ -394,7 +394,7 @@ public class TaskService : ITaskService
 
         if (assignedToUserId != previousAssigneeId)
         {
-            AddAuditLog(userId, "TaskAssigned", task.Id, new
+            AddAuditLog(userId, AuditActions.TaskAssigned, task.Id, new
             {
                 task.ProjectId,
                 PreviousAssigneeId = previousAssigneeId,
@@ -409,8 +409,8 @@ public class TaskService : ITaskService
             {
                 RecipientUserId = assignedToUserId,
                 Type = previousAssigneeId is null
-                    ? "TaskAssigned"
-                    : "TaskReassigned",
+                    ? NotificationTypes.TaskAssigned
+                    : NotificationTypes.TaskReassigned,
                 Title = "Task assigned to you",
                 Message = $"You have been assigned the task '{task.Title}'.",
                 RelatedEntityId = task.Id,
@@ -470,7 +470,7 @@ public class TaskService : ITaskService
 
         if (task.Status != previousStatus)
         {
-            AddAuditLog(userId, "TaskStatusChanged", task.Id, new
+            AddAuditLog(userId, AuditActions.TaskStatusChanged, task.Id, new
             {
                 task.ProjectId,
                 PreviousStatus = previousStatus.ToString(),
@@ -484,7 +484,7 @@ public class TaskService : ITaskService
             _notificationRepository.Add(new Notification
             {
                 RecipientUserId = task.CreatedByUserId,
-                Type = "TaskStatusChanged",
+                Type = NotificationTypes.TaskStatusChanged,
                 Title = "Task status updated",
                 Message = $"The status of '{task.Title}' changed to {task.Status}.",
                 RelatedEntityId = task.Id,
@@ -527,7 +527,7 @@ public class TaskService : ITaskService
         task.IsDeleted = true;
         task.DeletedAtUtc = DateTime.UtcNow;
 
-        AddAuditLog(userId, "TaskDeleted", task.Id, new { task.ProjectId });
+        AddAuditLog(userId, AuditActions.TaskDeleted, task.Id, new { task.ProjectId });
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

@@ -147,7 +147,7 @@ public sealed class AdminUserService : IAdminUserService
             _auditLogRepository.Add(new AuditLog
             {
                 UserId = actorUserId,
-                Action = "UserStatusChanged",
+                Action = AuditActions.UserStatusChanged,
                 EntityName = "User",
                 EntityId = userId,
                 IpAddress = ipAddress,
@@ -261,7 +261,7 @@ public sealed class AdminUserService : IAdminUserService
             _auditLogRepository.Add(new AuditLog
             {
                 UserId = actorUserId,
-                Action = "UserRoleChanged",
+                Action = AuditActions.UserRoleChanged,
                 EntityName = "User",
                 EntityId = userId,
                 IpAddress = ipAddress,

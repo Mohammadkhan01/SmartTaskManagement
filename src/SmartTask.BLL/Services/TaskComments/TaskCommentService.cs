@@ -2,6 +2,7 @@ using FluentValidation;
 using SmartTask.BLL.DTOs.TaskComments;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
+using SmartTask.Common.Constants;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
 
@@ -124,7 +125,7 @@ public class TaskCommentService : ITaskCommentService
         };
 
         _commentRepository.Add(comment);
-        AddActivity(taskId, userId, "CommentCreated", comment.Id);
+        AddActivity(taskId, userId, AuditActions.CommentCreated, comment.Id);
 
         if (task.AssignedToUserId is not null &&
             task.AssignedToUserId != userId)
@@ -132,7 +133,7 @@ public class TaskCommentService : ITaskCommentService
             _notificationRepository.Add(new Notification
             {
                 RecipientUserId = task.AssignedToUserId,
-                Type = "TaskCommentAdded",
+                Type = NotificationTypes.TaskCommentAdded,
                 Title = "New comment on your task",
                 Message = $"A new comment was added to '{task.Title}'.",
                 RelatedEntityId = task.Id,
@@ -198,7 +199,7 @@ public class TaskCommentService : ITaskCommentService
             Convert.FromBase64String(request.RowVersion));
 
         comment.Content = request.Content.Trim();
-        AddActivity(comment.TaskId, userId, "CommentUpdated", comment.Id);
+        AddActivity(comment.TaskId, userId, AuditActions.CommentUpdated, comment.Id);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -253,7 +254,7 @@ public class TaskCommentService : ITaskCommentService
 
         comment.IsDeleted = true;
         comment.DeletedAtUtc = DateTime.UtcNow;
-        AddActivity(comment.TaskId, userId, "CommentDeleted", comment.Id);
+        AddActivity(comment.TaskId, userId, AuditActions.CommentDeleted, comment.Id);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
