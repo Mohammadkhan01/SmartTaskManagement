@@ -1,11 +1,11 @@
 using FluentValidation;
 using SmartTask.BLL.DTOs.Projects;
-using SmartTask.BLL.Exceptions;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Services.Projects;
 using SmartTask.BLL.Validators;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
+using SmartTask.Common.Exceptions;
 
 namespace SmartTask.UnitTests;
 
@@ -14,6 +14,7 @@ public class ProjectServiceTests
     private readonly FakeProjectRepository _projects = new();
     private readonly FakeProjectMemberRepository _members = new();
     private readonly FakeUserAccountRepository _users = new();
+    private readonly FakeAuditLogRepository _auditLogs = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
 
     private ProjectService CreateService()
@@ -22,10 +23,12 @@ public class ProjectServiceTests
             _projects,
             _members,
             _users,
+            _auditLogs,
             _unitOfWork,
             new CreateProjectRequestValidator(),
             new UpdateProjectRequestValidator(),
-            new ProjectListQueryRequestValidator());
+            new ProjectListQueryRequestValidator(),
+            new FakeCurrentRequestContext());
     }
 
     [Fact]
@@ -429,6 +432,108 @@ public class ProjectServiceTests
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
+    [Fact]
+    public async Task CreateAsync_ShouldRecordProjectCreatedAudit()
+    {
+        _users.Roles["user-123"] = ["Project Manager"];
+
+        var result = await CreateService().CreateAsync(
+            new CreateProjectRequest { Name = "Audited project" },
+            "user-123");
+
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("ProjectCreated", audit.Action);
+        Assert.Equal("Project", audit.EntityName);
+        Assert.Equal(result.Id.ToString(), audit.EntityId);
+        Assert.Equal("user-123", audit.UserId);
+        Assert.Equal(FakeCurrentRequestContext.DefaultIpAddress, audit.IpAddress);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_StatusChange_ShouldRecordUpdateAndStatusAudits()
+    {
+        var project = new Project
+        {
+            Name = "Planned project",
+            CreatedByUserId = "owner-123"
+        };
+
+        _projects.AddedProjects.Add(project);
+        _users.Roles["owner-123"] = ["Project Manager"];
+        _members.AddedMembers.Add(new ProjectMember
+        {
+            ProjectId = project.Id,
+            UserId = "owner-123",
+            ProjectRole = ProjectMemberRole.Manager
+        });
+
+        await CreateService().UpdateAsync(
+            project.Id,
+            new UpdateProjectRequest
+            {
+                Name = "Planned project",
+                Status = ProjectStatus.Active,
+                RowVersion = Convert.ToBase64String([1, 2, 3, 4, 5, 6, 7, 8])
+            },
+            "owner-123");
+
+        Assert.Equal(2, _auditLogs.AddedLogs.Count);
+
+        var updated = Assert.Single(_auditLogs.AddedLogs, a => a.Action == "ProjectUpdated");
+        Assert.Contains("Status", updated.Details);
+        Assert.DoesNotContain("\"Name\"", updated.Details);
+
+        var statusChanged = Assert.Single(
+            _auditLogs.AddedLogs,
+            a => a.Action == "ProjectStatusChanged");
+        Assert.Contains("\"PreviousStatus\":\"Planning\"", statusChanged.Details);
+        Assert.Contains("\"NewStatus\":\"Active\"", statusChanged.Details);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ShouldRecordProjectDeletedAudit()
+    {
+        var project = new Project
+        {
+            Name = "Project to Delete",
+            CreatedByUserId = "owner-123"
+        };
+
+        _projects.AddedProjects.Add(project);
+        _users.Roles["owner-123"] = ["Project Manager"];
+        _members.AddedMembers.Add(new ProjectMember
+        {
+            ProjectId = project.Id,
+            UserId = "owner-123",
+            ProjectRole = ProjectMemberRole.Manager
+        });
+
+        await CreateService().DeleteAsync(project.Id, "owner-123");
+
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("ProjectDeleted", audit.Action);
+        Assert.Equal(project.Id.ToString(), audit.EntityId);
+        Assert.Equal("owner-123", audit.UserId);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenRejected_ShouldNotRecordAudit()
+    {
+        var project = new Project
+        {
+            Name = "Protected project",
+            CreatedByUserId = "owner-123"
+        };
+
+        _projects.AddedProjects.Add(project);
+        _users.Roles["outsider-123"] = ["Project Manager"];
+
+        await Assert.ThrowsAsync<ForbiddenAccessException>(() =>
+            CreateService().DeleteAsync(project.Id, "outsider-123"));
+
+        Assert.Empty(_auditLogs.AddedLogs);
+    }
+
     private sealed class FakeProjectRepository : IProjectRepository
     {
         public List<Project> AddedProjects { get; } = [];
@@ -625,6 +730,65 @@ public class ProjectServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_ShouldChangeStatusWhenProvided()
+    {
+        var project = new Project
+        {
+            Name = "Planned project",
+            CreatedByUserId = "owner-123"
+        };
+
+        _projects.AddedProjects.Add(project);
+        _users.Roles["owner-123"] = ["Project Manager"];
+        _members.AddedMembers.Add(new ProjectMember
+        {
+            ProjectId = project.Id,
+            UserId = "owner-123",
+            ProjectRole = ProjectMemberRole.Manager
+        });
+
+        var result = await CreateService().UpdateAsync(
+            project.Id,
+            new UpdateProjectRequest
+            {
+                Name = "Planned project",
+                Status = ProjectStatus.Active,
+                RowVersion = Convert.ToBase64String([1, 2, 3, 4, 5, 6, 7, 8])
+            },
+            "owner-123");
+
+        Assert.NotNull(result);
+        Assert.Equal(ProjectStatus.Active, result.Status);
+        Assert.Equal(ProjectStatus.Active, project.Status);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldPreserveStatusWhenOmitted()
+    {
+        var project = new Project
+        {
+            Name = "Active project",
+            CreatedByUserId = "owner-123",
+            Status = ProjectStatus.Active
+        };
+
+        _projects.AddedProjects.Add(project);
+        _users.Roles["owner-123"] = ["Admin"];
+
+        var result = await CreateService().UpdateAsync(
+            project.Id,
+            new UpdateProjectRequest
+            {
+                Name = "Renamed project",
+                RowVersion = Convert.ToBase64String([1, 2, 3, 4, 5, 6, 7, 8])
+            },
+            "owner-123");
+
+        Assert.NotNull(result);
+        Assert.Equal(ProjectStatus.Active, result.Status);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ShouldRejectNonOwner()
     {
         var project = new Project
@@ -783,6 +947,28 @@ public class ProjectServiceTests
             string role,
             CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+    }
+
+    private sealed class FakeAuditLogRepository : IAuditLogRepository
+    {
+        public List<AuditLog> AddedLogs { get; } = [];
+
+        public Task<IReadOnlyList<AuditLog>> GetByTaskIdAsync(
+            Guid taskId,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<AuditLog> result = AddedLogs
+                .Where(a => a.EntityName == "Task" &&
+                            a.EntityId == taskId.ToString())
+                .ToList();
+
+            return Task.FromResult(result);
+        }
+
+        public void Add(AuditLog auditLog)
+        {
+            AddedLogs.Add(auditLog);
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

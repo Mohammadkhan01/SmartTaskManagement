@@ -31,4 +31,12 @@ public interface IDashboardRepository
         Guid projectId,
         DateTime nowUtc,
         CancellationToken cancellationToken = default);
+
+    Task<DashboardProjectTotalsResponse> GetMemberProjectTotalsAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminDashboardResponse> GetAdminDashboardAsync(
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default);
 }

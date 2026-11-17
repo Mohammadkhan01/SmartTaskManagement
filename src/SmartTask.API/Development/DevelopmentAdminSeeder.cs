@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SmartTask.DAL.Identity;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.API.Development;
 
@@ -52,7 +53,7 @@ public static class DevelopmentAdminSeeder
             }
         }
 
-        if (!await userManager.IsInRoleAsync(user, "Admin"))
+        if (!await userManager.IsInRoleAsync(user, RoleNames.Admin))
         {
             if (await userManager.GetRolesAsync(user) is { Count: > 0 })
             {
@@ -60,7 +61,7 @@ public static class DevelopmentAdminSeeder
                     "Development Admin email belongs to an account with another role. Use a dedicated email.");
             }
 
-            var roleResult = await userManager.AddToRoleAsync(user, "Admin");
+            var roleResult = await userManager.AddToRoleAsync(user, RoleNames.Admin);
 
             if (!roleResult.Succeeded)
             {

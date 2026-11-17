@@ -1,6 +1,15 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
+  Validators
+} from '@angular/forms';
+import { validationMessage } from '../../core/api/api-error';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 
@@ -30,7 +39,17 @@ import { AuthService } from '../../core/auth/auth.service';
           <label for="password">Password</label>
           <input id="password" type="password" formControlName="password"
             placeholder="Enter your password"
-            [attr.autocomplete]="registering() ? 'new-password' : 'current-password'" />
+            [attr.autocomplete]="registering() ? 'new-password' : 'current-password'"
+            [attr.aria-describedby]="registering() ? 'password-rules' : null" />
+
+          <ul *ngIf="registering()" id="password-rules" class="password-rules" aria-live="polite">
+            <li *ngFor="let rule of passwordRules" [class.met]="rule.met(form.controls.password.value)">
+              {{ rule.label }}
+            </li>
+          </ul>
+          <p class="error" *ngIf="registering() && form.controls.password.touched && form.controls.password.invalid">
+            {{ passwordError() }}
+          </p>
 
           <p class="error" *ngIf="error()">{{ error() }}</p>
 
@@ -64,6 +83,9 @@ import { AuthService } from '../../core/auth/auth.service';
     button[type=submit] { margin-top:12px; padding:14px; border:0; border-radius:9px; background:#243b6b; color:white; font-weight:700; cursor:pointer; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .error { color:#b42318; font-size:13px; }
+    .password-rules { margin:2px 0 0; padding-left:18px; color:#758198; font-size:12px; line-height:1.7; }
+    .password-rules li.met { color:#15803d; }
+    .password-rules li.met::marker { content:'✓  '; }
     .switch-mode { margin:24px 0 0; text-align:center; color:#758198; font-size:13px; }
     .text-button { padding:0; border:0; background:none; color:#294d8b; font-weight:700; cursor:pointer; }
     .security-note { margin:26px 0 0; text-align:center; color:#9aa3b2; font-size:11px; }
@@ -82,19 +104,32 @@ export class LoginComponent {
   readonly form = this.fb.nonNullable.group({
     displayName: [''],
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required, Validators.minLength(8)]]
+    password: ['', [Validators.required]]
   });
+
+  readonly passwordRules = PASSWORD_RULES;
+
+  passwordError(): string {
+    const value = this.form.controls.password.value;
+    if (!value) return 'A password is required.';
+    const failed = PASSWORD_RULES.filter(rule => !rule.met(value));
+    return failed.length ? `Password must have ${failed.map(rule => rule.short).join(', ')}.` : '';
+  }
 
   toggleMode(): void {
     this.registering.update(value => !value);
     this.error.set('');
     const name = this.form.controls.displayName;
+    const password = this.form.controls.password;
     if (this.registering()) {
-      name.addValidators(Validators.required);
+      name.setValidators([Validators.required, Validators.maxLength(150)]);
+      password.setValidators([Validators.required, strongPasswordValidator]);
     } else {
       name.clearValidators();
+      password.setValidators([Validators.required]);
     }
     name.updateValueAndValidity();
+    password.updateValueAndValidity();
   }
 
   async submit(): Promise<void> {
@@ -121,10 +156,45 @@ export class LoginComponent {
         });
       }
       await this.router.navigate(['/dashboard']);
-    } catch {
-      this.error.set('Sign-in failed. Check your details and API connection, then try again.');
+    } catch (error) {
+      this.error.set(this.submitErrorMessage(error));
     } finally {
       this.loading.set(false);
     }
   }
+
+  private submitErrorMessage(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 0) return 'Cannot reach the server. Check your connection and try again.';
+      if (error.status === 429) return 'Too many attempts. Wait a minute and try again.';
+      if (this.registering() && (error.status === 400 || error.status === 409)) {
+        return validationMessage(error) ?? 'Registration failed. Check your details and try again.';
+      }
+      if (error.status === 401 || error.status === 400) return 'Incorrect email or password.';
+    }
+    return this.registering()
+      ? 'Registration failed. Check your details and try again.'
+      : 'Sign-in failed. Check your details and API connection, then try again.';
+  }
 }
+
+interface PasswordRule {
+  label: string;
+  short: string;
+  met: (value: string) => boolean;
+}
+
+/** Mirrors the backend RegisterRequestValidator and ASP.NET Identity password options. */
+const PASSWORD_RULES: PasswordRule[] = [
+  { label: 'At least 12 characters', short: 'at least 12 characters', met: v => v.length >= 12 },
+  { label: 'An uppercase letter (A–Z)', short: 'an uppercase letter', met: v => /[A-Z]/.test(v) },
+  { label: 'A lowercase letter (a–z)', short: 'a lowercase letter', met: v => /[a-z]/.test(v) },
+  { label: 'A digit (0–9)', short: 'a digit', met: v => /[0-9]/.test(v) },
+  { label: 'A symbol (e.g. ! @ # $)', short: 'a symbol', met: v => /[^a-zA-Z0-9]/.test(v) }
+];
+
+const strongPasswordValidator: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {
+  const value = (control.value as string) ?? '';
+  if (!value) return null;
+  return PASSWORD_RULES.every(rule => rule.met(value)) ? null : { weakPassword: true };
+};

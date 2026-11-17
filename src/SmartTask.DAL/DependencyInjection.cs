@@ -9,6 +9,8 @@ using SmartTask.DAL.Persistence;
 using SmartTask.DAL.Persistence.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.DAL.Storage;
+using SmartTask.BLL.Configuration;
+using SmartTask.DAL.Ai;
 
 
 namespace SmartTask.DAL;
@@ -68,6 +70,17 @@ public static class DependencyInjection
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
+
+        // AI providers (strategy selected by Ai:Provider in AIService)
+        services.Configure<AiSettings>(
+            configuration.GetSection(AiSettings.SectionName));
+        services.AddSingleton<IAiTextProvider, MockAiTextProvider>();
+        services.AddHttpClient<OpenAiCompatibleTextProvider>();
+        services.AddTransient<IAiTextProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<OpenAiCompatibleTextProvider>());
+        services.AddHttpClient<GitHubModelsTextProvider>();
+        services.AddTransient<IAiTextProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<GitHubModelsTextProvider>());
         
         return services;
     }

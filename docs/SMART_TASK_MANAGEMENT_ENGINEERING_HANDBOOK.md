@@ -670,6 +670,7 @@ Do not add custom claims or claim tables unless a real requirement needs them.
 - Name length must not exceed 150 characters.
 - Description must not exceed 2,000 characters.
 - Status must be a valid ProjectStatus value.
+- New projects start as Planning. Users permitted to manage the project change the status through `PUT /api/v1/projects/{id}` (optional `status` field; omitting it preserves the current status). No transition ordering is enforced, but tasks can only be assigned while the project is Active (see §6.5).
 - Creator must be a valid user.
 - Soft-deleted projects must not appear in normal queries.
 - RowVersion must be used for concurrency-sensitive updates.

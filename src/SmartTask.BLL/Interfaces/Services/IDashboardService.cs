@@ -21,4 +21,11 @@ public interface IDashboardService
         Guid projectId,
         string userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns system-wide totals, or null when the user is not an Admin.
+    /// </summary>
+    Task<AdminDashboardResponse?> GetAdminDashboardAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
 }

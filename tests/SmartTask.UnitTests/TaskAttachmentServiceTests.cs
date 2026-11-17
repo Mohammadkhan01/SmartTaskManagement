@@ -24,7 +24,8 @@ public class TaskAttachmentServiceTests
             _fileStorage,
             _auditLogs,
             _unitOfWork,
-            NullLogger<TaskAttachmentService>.Instance);
+            NullLogger<TaskAttachmentService>.Instance,
+            new FakeCurrentRequestContext());
 
     private TaskItem CreateTask()
     {
@@ -673,7 +674,7 @@ public async Task OpenDownloadAsync_ShouldReturnFileForProjectMember()
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<AuditLog> result = AddedLogs
-                .Where(a => a.EntityType == "Task" &&
+                .Where(a => a.EntityName == "Task" &&
                             a.EntityId == taskId.ToString())
                 .ToList();
 

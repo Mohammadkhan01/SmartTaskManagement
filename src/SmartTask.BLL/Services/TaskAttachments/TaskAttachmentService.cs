@@ -18,6 +18,7 @@ public class TaskAttachmentService : ITaskAttachmentService
     private readonly IProjectMemberRepository _memberRepository;
     private readonly IFileStorageService _fileStorage;
     private readonly IAuditLogRepository _auditLogRepository;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<TaskAttachmentService> _logger;
 
@@ -28,7 +29,8 @@ public class TaskAttachmentService : ITaskAttachmentService
         IFileStorageService fileStorage,
         IAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
-        ILogger<TaskAttachmentService> logger)
+        ILogger<TaskAttachmentService> logger,
+        ICurrentRequestContext requestContext)
     {
         _attachmentRepository = attachmentRepository;
         _taskRepository = taskRepository;
@@ -37,6 +39,7 @@ public class TaskAttachmentService : ITaskAttachmentService
         _auditLogRepository = auditLogRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _requestContext = requestContext;
     }
 
     public async Task<TaskAttachmentResponse?> UploadAsync(
@@ -376,10 +379,11 @@ public async Task<TaskAttachmentDownload?> OpenDownloadAsync(
         {
             UserId = userId,
             Action = action,
-            EntityType = "Task",
+            EntityName = "Task",
             EntityId = taskId.ToString(),
             Details = JsonSerializer.Serialize(
-                new { AttachmentId = attachmentId })
+                new { AttachmentId = attachmentId }),
+            IpAddress = _requestContext.IpAddress
         });
     }
 

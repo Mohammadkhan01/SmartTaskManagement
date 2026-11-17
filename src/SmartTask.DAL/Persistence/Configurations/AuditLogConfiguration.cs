@@ -1,6 +1,4 @@
-﻿
-
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartTask.DAL.Identity;
 using SmartTask.Domain.Entities;
@@ -16,6 +14,9 @@ public class AuditLogConfiguration
 
         builder.HasKey(a => a.Id);
 
+        builder.Property(a => a.Id)
+            .UseIdentityColumn();
+
         builder.Property(a => a.UserId)
             .HasMaxLength(450);
 
@@ -23,17 +24,21 @@ public class AuditLogConfiguration
             .IsRequired()
             .HasMaxLength(100);
 
-        builder.Property(a => a.EntityType)
+        builder.Property(a => a.EntityName)
             .IsRequired()
             .HasMaxLength(100);
 
         builder.Property(a => a.EntityId)
-            .HasMaxLength(450);
+            .HasMaxLength(100);
 
         builder.Property(a => a.Details)
-            .HasMaxLength(4000);
+            .HasMaxLength(2000);
+
+        builder.Property(a => a.TimestampUtc)
+            .IsRequired();
 
         builder.Property(a => a.IpAddress)
+            .IsUnicode(false)
             .HasMaxLength(45);
 
         // User relationship is optional because system events
@@ -43,11 +48,9 @@ public class AuditLogConfiguration
             .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Efficient audit-history queries.
-        builder.HasIndex(a => new { a.UserId, a.CreatedAtUtc });
+        builder.HasIndex(a => new { a.UserId, a.TimestampUtc });
 
-        builder.HasIndex(a => a.CreatedAtUtc);
-
-        builder.HasIndex(a => new { a.EntityType, a.EntityId });
+        // Supports the task activity timeline lookup.
+        builder.HasIndex(a => new { a.EntityName, a.EntityId });
     }
 }

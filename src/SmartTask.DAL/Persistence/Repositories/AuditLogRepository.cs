@@ -20,9 +20,9 @@ public class AuditLogRepository : IAuditLogRepository
         return await _context.AuditLogs
             .AsNoTracking()
             .Where(a =>
-                a.EntityType == "Task" &&
+                a.EntityName == "Task" &&
                 a.EntityId == taskId.ToString())
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.TimestampUtc).ThenByDescending(a => a.Id)
             .ToListAsync(cancellationToken);
     }
 

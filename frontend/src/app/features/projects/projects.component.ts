@@ -1,11 +1,11 @@
 import { DatePipe } from '@angular/common';
+import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
-import { AuthService } from '../../core/auth/auth.service';
 import { SessionStore } from '../../core/auth/session-store';
 import {
   Project,
@@ -18,21 +18,10 @@ import { ProjectService } from '../../core/projects/project.service';
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [DatePipe, ReactiveFormsModule, RouterLink],
+  providers: [DatePipe],
+  imports: [UtcDatePipe, ReactiveFormsModule],
   template: `
     <main class="page">
-      <header class="topbar">
-        <a class="brand" routerLink="/dashboard">SMART TASK MANAGEMENT</a>
-        <nav aria-label="Main navigation">
-          <a routerLink="/dashboard">Dashboard</a>
-          <a routerLink="/projects" class="active" aria-current="page">Projects</a>
-        </nav>
-        <div class="account">
-          <span>{{ session.user()?.displayName }}</span>
-          <button type="button" class="secondary" (click)="logout()">Sign out</button>
-        </div>
-      </header>
-
       <section class="heading">
         <div>
           <p class="eyebrow">WORKSPACE</p>
@@ -144,7 +133,7 @@ import { ProjectService } from '../../core/projects/project.service';
                           {{ statusLabel(project.status) }}
                         </span>
                       </td>
-                      <td>{{ project.createdAtUtc | date:'mediumDate' }}</td>
+                      <td>{{ project.createdAtUtc | utcDate:'mediumDate' }}</td>
                       <td>
                         <button type="button" class="link-button"
                           (click)="openProject(project)">View project</button>
@@ -174,13 +163,7 @@ import { ProjectService } from '../../core/projects/project.service';
   styles: [`
     :host { display:block; min-height:100vh; background:#f4f6fa; }
     .page { max-width:1180px; margin:auto; padding:24px 28px 48px; }
-    .topbar { display:flex; align-items:center; gap:32px; min-height:54px; border-bottom:1px solid #e5eaf1; }
-    .brand { color:#17243b; font-size:12px; font-weight:800; letter-spacing:1px; text-decoration:none; }
-    nav { display:flex; gap:22px; flex:1; }
-    nav a { color:#64748b; font-size:14px; text-decoration:none; padding:18px 0; }
-    nav a.active { color:#1d4ed8; border-bottom:2px solid #1d4ed8; }
-    .account { display:flex; align-items:center; gap:14px; color:#64748b; font-size:13px; }
-    .heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin:34px 0 24px; }
+    .heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin:10px 0 24px; }
     h1 { margin:5px 0 6px; font-size:32px; }
     h2 { margin:0 0 20px; font-size:20px; }
     .eyebrow { margin:0; color:#64748b; font-size:11px; font-weight:700; letter-spacing:1.3px; }
@@ -219,10 +202,6 @@ import { ProjectService } from '../../core/projects/project.service';
     .pagination div { display:flex; gap:8px; }
     @media(max-width:720px) {
       .page { padding:16px; }
-      .topbar { flex-wrap:wrap; gap:12px; padding-bottom:10px; }
-      nav { order:3; width:100%; }
-      nav a { padding:8px 0; }
-      .account { margin-left:auto; }
       .heading { align-items:flex-start; flex-direction:column; }
       .filters { grid-template-columns:1fr; }
       .pagination { align-items:flex-start; flex-direction:column; }
@@ -233,7 +212,6 @@ export class ProjectsComponent {
   private readonly projects = inject(ProjectService);
   private readonly fb = inject(FormBuilder);
   private readonly router = inject(Router);
-  private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   readonly session = inject(SessionStore);
 
@@ -363,14 +341,6 @@ export class ProjectsComponent {
       [ProjectStatus.OnHold]: 'On hold',
       [ProjectStatus.Archived]: 'Archived'
     } as Record<number, string>)[status] ?? 'Unknown';
-  }
-
-  async logout(): Promise<void> {
-    try {
-      await this.auth.logout();
-    } finally {
-      await this.router.navigateByUrl('/login');
-    }
   }
 
   private query(search = this.searchText()): ProjectListQuery {

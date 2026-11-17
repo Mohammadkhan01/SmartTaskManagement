@@ -4,6 +4,8 @@ using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
+using SmartTask.Common.Constants;
+using SmartTask.Common.Utilities;
 
 namespace SmartTask.BLL.Services.Tasks;
 
@@ -14,6 +16,8 @@ public class TaskService : ITaskService
     private readonly IProjectMemberRepository _memberRepository;
     private readonly IUserAccountRepository _userAccountRepository;
     private readonly INotificationRepository _notificationRepository;
+    private readonly IAuditLogRepository _auditLogRepository;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateTaskRequest> _createValidator;
     private readonly IValidator<UpdateTaskRequest> _updateValidator;
@@ -27,24 +31,28 @@ public class TaskService : ITaskService
         IProjectMemberRepository memberRepository,
         IUserAccountRepository userAccountRepository,
         INotificationRepository notificationRepository,
+        IAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskRequest> createValidator,
         IValidator<UpdateTaskRequest> updateValidator,
         IValidator<UpdateTaskStatusRequest> statusValidator,
         IValidator<AssignTaskRequest> assignValidator,
-        IValidator<TaskListQueryRequest> listQueryValidator)
+        IValidator<TaskListQueryRequest> listQueryValidator,
+        ICurrentRequestContext requestContext)
     {
         _taskRepository = taskRepository;
         _projectRepository = projectRepository;
         _memberRepository = memberRepository;
         _userAccountRepository = userAccountRepository;
         _notificationRepository = notificationRepository;
+        _auditLogRepository = auditLogRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _statusValidator = statusValidator;
         _assignValidator = assignValidator;
         _listQueryValidator = listQueryValidator;
+        _requestContext = requestContext;
     }
 
     public async Task<IReadOnlyList<TaskResponse>?> GetByProjectIdAsync(
@@ -91,18 +99,15 @@ public class TaskService : ITaskService
             await _taskRepository.GetPagedByProjectIdAsync(
                 projectId, query, cancellationToken);
 
-        var totalPages = (int)(
-            ((long)totalCount + query.PageSize - 1) / query.PageSize);
-
         return new TaskListResponse
         {
             Items = items.Select(MapToResponse).ToList(),
             PageNumber = query.PageNumber,
             PageSize = query.PageSize,
             TotalCount = totalCount,
-            TotalPages = totalPages,
-            HasPreviousPage = query.PageNumber > 1,
-            HasNextPage = query.PageNumber < totalPages
+            TotalPages = Pagination.CalculateTotalPages(
+                totalCount,
+                query.PageSize)
         };
     }
 
@@ -161,6 +166,16 @@ public class TaskService : ITaskService
             throw new ValidationException(validationResult.Errors);
         }
 
+        // Admins bypass membership checks, so the project must be verified explicitly.
+        var project = await _projectRepository.GetByIdAsync(
+            projectId,
+            cancellationToken);
+
+        if (project is null || project.IsDeleted)
+        {
+            return null;
+        }
+
         var assignedToUserId = request.AssignedToUserId?.Trim();
 
         if (assignedToUserId is not null)
@@ -184,6 +199,13 @@ public class TaskService : ITaskService
         };
 
         _taskRepository.Add(task);
+
+        AddAuditLog(userId, "TaskCreated", task.Id, new
+        {
+            task.ProjectId,
+            Priority = task.Priority.ToString(),
+            task.AssignedToUserId
+        });
 
         if (assignedToUserId is not null && assignedToUserId != userId)
         {
@@ -255,11 +277,41 @@ public class TaskService : ITaskService
             task,
             Convert.FromBase64String(request.RowVersion));
 
-        task.Title = request.Title.Trim();
-        task.Description = request.Description?.Trim();
+        var newTitle = request.Title.Trim();
+        var newDescription = request.Description?.Trim();
+        var changedFields = new (string Field, bool Changed)[]
+            {
+                (nameof(TaskItem.Title), task.Title != newTitle),
+                (nameof(TaskItem.Description), task.Description != newDescription),
+                (nameof(TaskItem.Priority), task.Priority != request.Priority),
+                (nameof(TaskItem.DueDateUtc), task.DueDateUtc != request.DueDateUtc),
+                (nameof(TaskItem.AssignedToUserId), previousAssigneeId != assignedToUserId)
+            }
+            .Where(change => change.Changed)
+            .Select(change => change.Field)
+            .ToList();
+
+        task.Title = newTitle;
+        task.Description = newDescription;
         task.Priority = request.Priority;
         task.AssignedToUserId = assignedToUserId;
         task.DueDateUtc = request.DueDateUtc;
+
+        AddAuditLog(userId, "TaskUpdated", task.Id, new
+        {
+            task.ProjectId,
+            ChangedFields = changedFields
+        });
+
+        if (previousAssigneeId != assignedToUserId)
+        {
+            AddAuditLog(userId, "TaskAssigned", task.Id, new
+            {
+                task.ProjectId,
+                PreviousAssigneeId = previousAssigneeId,
+                NewAssigneeId = assignedToUserId
+            });
+        }
 
         if (assignedToUserId is not null &&
             assignedToUserId != previousAssigneeId &&
@@ -340,6 +392,16 @@ public class TaskService : ITaskService
 
         task.AssignedToUserId = assignedToUserId;
 
+        if (assignedToUserId != previousAssigneeId)
+        {
+            AddAuditLog(userId, "TaskAssigned", task.Id, new
+            {
+                task.ProjectId,
+                PreviousAssigneeId = previousAssigneeId,
+                NewAssigneeId = assignedToUserId
+            });
+        }
+
         if (assignedToUserId != previousAssigneeId &&
             assignedToUserId != userId)
         {
@@ -406,6 +468,16 @@ public class TaskService : ITaskService
 
         task.Status = request.Status;
 
+        if (task.Status != previousStatus)
+        {
+            AddAuditLog(userId, "TaskStatusChanged", task.Id, new
+            {
+                task.ProjectId,
+                PreviousStatus = previousStatus.ToString(),
+                NewStatus = task.Status.ToString()
+            });
+        }
+
         if (task.Status != previousStatus &&
             task.CreatedByUserId != userId)
         {
@@ -455,6 +527,8 @@ public class TaskService : ITaskService
         task.IsDeleted = true;
         task.DeletedAtUtc = DateTime.UtcNow;
 
+        AddAuditLog(userId, "TaskDeleted", task.Id, new { task.ProjectId });
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return true;
@@ -469,14 +543,14 @@ public class TaskService : ITaskService
             userId,
             cancellationToken);
 
-        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        if (roles.Contains(RoleNames.Admin, StringComparer.OrdinalIgnoreCase))
         {
             return true;
         }
 
         var hasPermittedGlobalRole =
-            roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase) ||
-            roles.Contains("Team Member", StringComparer.OrdinalIgnoreCase);
+            roles.Contains(RoleNames.ProjectManager, StringComparer.OrdinalIgnoreCase) ||
+            roles.Contains(RoleNames.TeamMember, StringComparer.OrdinalIgnoreCase);
 
         if (!hasPermittedGlobalRole)
         {
@@ -498,12 +572,12 @@ public class TaskService : ITaskService
             userId,
             cancellationToken);
 
-        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        if (roles.Contains(RoleNames.Admin, StringComparer.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        if (!roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase))
+        if (!roles.Contains(RoleNames.ProjectManager, StringComparer.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -525,7 +599,7 @@ public class TaskService : ITaskService
             userId,
             cancellationToken);
 
-        if (roles.Contains("Admin", StringComparer.OrdinalIgnoreCase))
+        if (roles.Contains(RoleNames.Admin, StringComparer.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -540,13 +614,13 @@ public class TaskService : ITaskService
             return false;
         }
 
-        if (roles.Contains("Project Manager", StringComparer.OrdinalIgnoreCase) &&
+        if (roles.Contains(RoleNames.ProjectManager, StringComparer.OrdinalIgnoreCase) &&
             membership.ProjectRole == ProjectMemberRole.Manager)
         {
             return true;
         }
 
-        return roles.Contains("Team Member", StringComparer.OrdinalIgnoreCase) &&
+        return roles.Contains(RoleNames.TeamMember, StringComparer.OrdinalIgnoreCase) &&
                task.AssignedToUserId == userId;
     }
 
@@ -587,6 +661,23 @@ public class TaskService : ITaskService
             throw new ValidationException(
                 "The assigned user must be a member of this project.");
         }
+    }
+
+    private void AddAuditLog(
+        string userId,
+        string action,
+        Guid taskId,
+        object details)
+    {
+        _auditLogRepository.Add(new AuditLog
+        {
+            UserId = userId,
+            Action = action,
+            EntityName = "Task",
+            EntityId = taskId.ToString(),
+            Details = System.Text.Json.JsonSerializer.Serialize(details),
+            IpAddress = _requestContext.IpAddress
+        });
     }
 
     private static TaskResponse MapToResponse(TaskItem task)

@@ -17,6 +17,7 @@ public class TaskServiceTests
     private readonly FakeProjectMemberRepository _members = new();
     private readonly FakeUserAccountRepository _users = new();
     private readonly FakeNotificationRepository _notifications = new();
+    private readonly FakeAuditLogRepository _auditLogs = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
 
     private TaskService CreateService()
@@ -27,12 +28,14 @@ public class TaskServiceTests
             _members,
             _users,
             _notifications,
+            _auditLogs,
             _unitOfWork,
             new CreateTaskRequestValidator(),
             new UpdateTaskRequestValidator(),
             new UpdateTaskStatusRequestValidator(),
             new AssignTaskRequestValidator(),
-            new SmartTask.BLL.Validators.TaskListQueryRequestValidator());
+            new SmartTask.BLL.Validators.TaskListQueryRequestValidator(),
+            new FakeCurrentRequestContext());
     }
 
     private void AddMember(
@@ -193,6 +196,14 @@ public class TaskServiceTests
         AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
         AddGlobalRole("manager-123", "Project Manager");
 
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Test project",
+            Status = ProjectStatus.Active,
+            CreatedByUserId = "manager-123"
+        });
+
         var service = CreateService();
 
         await Assert.ThrowsAsync<ValidationException>(
@@ -205,6 +216,46 @@ public class TaskServiceTests
                 },
                 "manager-123"));
 
+        Assert.Empty(_tasks.AddedTasks);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldReturnNullForAdminWhenProjectDoesNotExist()
+    {
+        AddGlobalRole("admin-123", "Admin");
+
+        var result = await CreateService().CreateAsync(
+            Guid.NewGuid(),
+            new CreateTaskRequest { Title = "Orphan task" },
+            "admin-123");
+
+        Assert.Null(result);
+        Assert.Empty(_tasks.AddedTasks);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldReturnNullForAdminWhenProjectIsSoftDeleted()
+    {
+        AddGlobalRole("admin-123", "Admin");
+        var projectId = Guid.NewGuid();
+
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Deleted project",
+            Status = ProjectStatus.Active,
+            CreatedByUserId = "admin-123",
+            IsDeleted = true
+        });
+
+        var result = await CreateService().CreateAsync(
+            projectId,
+            new CreateTaskRequest { Title = "Task in deleted project" },
+            "admin-123");
+
+        Assert.Null(result);
         Assert.Empty(_tasks.AddedTasks);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
@@ -663,6 +714,151 @@ public class TaskServiceTests
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
+    [Fact]
+    public async Task CreateAsync_ShouldRecordTaskCreatedAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Test project",
+            Status = ProjectStatus.Active,
+            CreatedByUserId = "manager-123"
+        });
+
+        var result = await CreateService().CreateAsync(
+            projectId,
+            new CreateTaskRequest { Title = "Audited task" },
+            "manager-123");
+
+        Assert.NotNull(result);
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("TaskCreated", audit.Action);
+        Assert.Equal("Task", audit.EntityName);
+        Assert.Equal(result.Id.ToString(), audit.EntityId);
+        Assert.Equal("manager-123", audit.UserId);
+        Assert.Equal(FakeCurrentRequestContext.DefaultIpAddress, audit.IpAddress);
+        Assert.Contains(projectId.ToString(), audit.Details);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ShouldRecordChangedFieldsAndAssignmentAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
+        AddMember(projectId, "member-123");
+
+        var task = CreateTask(projectId);
+
+        var result = await CreateService().UpdateAsync(
+            task.Id,
+            new UpdateTaskRequest
+            {
+                Title = "Test task",
+                Description = "Changed description",
+                Priority = task.Priority,
+                AssignedToUserId = "member-123",
+                RowVersion = Convert.ToBase64String(task.RowVersion)
+            },
+            "manager-123");
+
+        Assert.NotNull(result);
+        Assert.Equal(2, _auditLogs.AddedLogs.Count);
+
+        var updated = Assert.Single(_auditLogs.AddedLogs, a => a.Action == "TaskUpdated");
+        Assert.Contains("Description", updated.Details);
+        Assert.Contains("AssignedToUserId", updated.Details);
+        Assert.DoesNotContain("\"Title\"", updated.Details);
+
+        var assigned = Assert.Single(_auditLogs.AddedLogs, a => a.Action == "TaskAssigned");
+        Assert.Contains("member-123", assigned.Details);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AssignAsync_ShouldRecordTaskAssignedAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "member-123");
+        _users.Roles["manager-123"] = ["Project Manager"];
+
+        var task = CreateTask(projectId);
+
+        await CreateService().AssignAsync(
+            task.Id,
+            new AssignTaskRequest
+            {
+                AssignedToUserId = "member-123",
+                RowVersion = Convert.ToBase64String(task.RowVersion)
+            },
+            "manager-123");
+
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("TaskAssigned", audit.Action);
+        Assert.Equal(task.Id.ToString(), audit.EntityId);
+        Assert.Contains("\"NewAssigneeId\":\"member-123\"", audit.Details);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_ShouldRecordStatusChangeAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
+
+        var task = CreateTask(projectId, "member-123");
+
+        await CreateService().UpdateStatusAsync(
+            task.Id,
+            new UpdateTaskStatusRequest
+            {
+                Status = TaskStatus.Completed,
+                RowVersion = Convert.ToBase64String(task.RowVersion)
+            },
+            "member-123");
+
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("TaskStatusChanged", audit.Action);
+        Assert.Equal("member-123", audit.UserId);
+        Assert.Contains("\"PreviousStatus\":\"ToDo\"", audit.Details);
+        Assert.Contains("\"NewStatus\":\"Completed\"", audit.Details);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ShouldRecordTaskDeletedAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
+
+        var task = CreateTask(projectId);
+
+        await CreateService().DeleteAsync(task.Id, "manager-123");
+
+        var audit = Assert.Single(_auditLogs.AddedLogs);
+        Assert.Equal("TaskDeleted", audit.Action);
+        Assert.Equal(task.Id.ToString(), audit.EntityId);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenRejected_ShouldNotRecordAudit()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "member-123");
+        AddGlobalRole("member-123", "Team Member");
+
+        var task = CreateTask(projectId);
+
+        var result = await CreateService().DeleteAsync(task.Id, "member-123");
+
+        Assert.False(result);
+        Assert.Empty(_auditLogs.AddedLogs);
+    }
+
     private sealed class FakeProjectRepository : IProjectRepository
     {
         public List<Project> AddedProjects { get; } = [];
@@ -940,6 +1136,28 @@ public class TaskServiceTests
             }
 
             return Task.FromResult(notifications.Count);
+        }
+    }
+
+    private sealed class FakeAuditLogRepository : IAuditLogRepository
+    {
+        public List<AuditLog> AddedLogs { get; } = [];
+
+        public Task<IReadOnlyList<AuditLog>> GetByTaskIdAsync(
+            Guid taskId,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<AuditLog> result = AddedLogs
+                .Where(a => a.EntityName == "Task" &&
+                            a.EntityId == taskId.ToString())
+                .ToList();
+
+            return Task.FromResult(result);
+        }
+
+        public void Add(AuditLog auditLog)
+        {
+            AddedLogs.Add(auditLog);
         }
     }
 

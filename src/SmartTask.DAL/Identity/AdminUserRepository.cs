@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartTask.BLL.DTOs.Admin;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.DAL.Persistence;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.DAL.Identity;
 
@@ -10,9 +11,9 @@ public sealed class AdminUserRepository : IAdminUserRepository
 {
     private static readonly string[] GlobalRoles =
     [
-        "Admin",
-        "Project Manager",
-        "Team Member"
+        RoleNames.Admin,
+        RoleNames.ProjectManager,
+        RoleNames.TeamMember
     ];
 
     private readonly SmartTaskDbContext _context;

@@ -15,6 +15,9 @@ public sealed class DashboardSummaryResponse
 
     public decimal CompletionPercentage { get; set; }
 
+    // Populated for the personal dashboard only.
+    public DashboardProjectTotalsResponse? ProjectTotals { get; set; }
+
     public IReadOnlyList<DashboardTaskItemResponse> RecentTasks { get; set; }
         = [];
 }

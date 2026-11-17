@@ -12,6 +12,7 @@ public class TaskCommentService : ITaskCommentService
     private readonly ITaskCommentRepository _commentRepository;
     private readonly ITaskRepository _taskRepository;
     private readonly IAuditLogRepository _auditLogRepository;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly IProjectMemberRepository _memberRepository;
     private readonly INotificationRepository _notificationRepository;
     private readonly IUnitOfWork _unitOfWork;
@@ -26,7 +27,8 @@ public class TaskCommentService : ITaskCommentService
         INotificationRepository notificationRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateTaskCommentRequest> createValidator,
-        IValidator<UpdateTaskCommentRequest> updateValidator)
+        IValidator<UpdateTaskCommentRequest> updateValidator,
+        ICurrentRequestContext requestContext)
     {
         _commentRepository = commentRepository;
         _taskRepository = taskRepository;
@@ -36,6 +38,7 @@ public class TaskCommentService : ITaskCommentService
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _requestContext = requestContext;
     }
 
     public async Task<IReadOnlyList<TaskCommentResponse>?> GetByTaskIdAsync(
@@ -267,10 +270,11 @@ public class TaskCommentService : ITaskCommentService
         {
             UserId = userId,
             Action = action,
-            EntityType = "Task",
+            EntityName = "Task",
             EntityId = taskId.ToString(),
             Details = System.Text.Json.JsonSerializer.Serialize(
-                new { CommentId = commentId })
+                new { CommentId = commentId }),
+            IpAddress = _requestContext.IpAddress
         });
     }
 

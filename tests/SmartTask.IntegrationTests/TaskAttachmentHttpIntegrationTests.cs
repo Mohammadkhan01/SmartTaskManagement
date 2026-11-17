@@ -110,7 +110,7 @@ public sealed class TaskAttachmentHttpIntegrationTests
             form.Add(fileContent, "file", "report.pdf");
 
             var uploadResponse = await client.PostAsync(
-                $"/api/tasks/{taskId}/attachments",
+                $"/api/v1/tasks/{taskId}/attachments",
                 form);
 
             Assert.Equal(
@@ -132,7 +132,7 @@ public sealed class TaskAttachmentHttpIntegrationTests
 
             // 2. A project member can list task attachments.
             var listResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/attachments");
+                $"/api/v1/tasks/{taskId}/attachments");
 
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
@@ -147,13 +147,13 @@ public sealed class TaskAttachmentHttpIntegrationTests
 
             // 3. A project member can retrieve attachment metadata.
             var metadataResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}");
+                $"/api/v1/task-attachments/{attachmentId}");
 
             Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
 
             // 4. A project member can download the original file.
             var downloadResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}/download");
+                $"/api/v1/task-attachments/{attachmentId}/download");
 
             Assert.Equal(HttpStatusCode.OK, downloadResponse.StatusCode);
             Assert.Equal(
@@ -168,28 +168,28 @@ public sealed class TaskAttachmentHttpIntegrationTests
             AuthenticateAs(client, outsiderId);
 
             var outsiderListResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/attachments");
+                $"/api/v1/tasks/{taskId}/attachments");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 outsiderListResponse.StatusCode);
 
             var outsiderMetadataResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}");
+                $"/api/v1/task-attachments/{attachmentId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 outsiderMetadataResponse.StatusCode);
 
             var outsiderDownloadResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}/download");
+                $"/api/v1/task-attachments/{attachmentId}/download");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 outsiderDownloadResponse.StatusCode);
 
             var outsiderDeleteResponse = await client.DeleteAsync(
-                $"/api/task-attachments/{attachmentId}");
+                $"/api/v1/task-attachments/{attachmentId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -199,7 +199,7 @@ public sealed class TaskAttachmentHttpIntegrationTests
             AuthenticateAs(client, memberId);
 
             var deleteResponse = await client.DeleteAsync(
-                $"/api/task-attachments/{attachmentId}");
+                $"/api/v1/task-attachments/{attachmentId}");
 
             Assert.Equal(
                 HttpStatusCode.NoContent,
@@ -207,21 +207,21 @@ public sealed class TaskAttachmentHttpIntegrationTests
 
             // 7. A deleted attachment is no longer accessible.
             var deletedMetadataResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}");
+                $"/api/v1/task-attachments/{attachmentId}");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 deletedMetadataResponse.StatusCode);
 
             var deletedDownloadResponse = await client.GetAsync(
-                $"/api/task-attachments/{attachmentId}/download");
+                $"/api/v1/task-attachments/{attachmentId}/download");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 deletedDownloadResponse.StatusCode);
 
             var finalListResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/attachments");
+                $"/api/v1/tasks/{taskId}/attachments");
 
             Assert.Equal(HttpStatusCode.OK, finalListResponse.StatusCode);
 

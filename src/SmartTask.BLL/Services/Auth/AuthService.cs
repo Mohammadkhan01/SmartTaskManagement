@@ -7,12 +7,13 @@ using SmartTask.BLL.DTOs.Auth;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.Domain.Entities;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.BLL.Services.Auth;
 
 public sealed class AuthService : IAuthService
 {
-    private const string DefaultRole = "Team Member";
+    private const string DefaultRole = RoleNames.TeamMember;
 
     private readonly IUserAccountRepository _userRepository;
     private readonly IRefreshTokenRepository _refreshTokenRepository;

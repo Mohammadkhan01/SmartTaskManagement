@@ -1,4 +1,32 @@
-# Database is managed externally by the existing azuresqledge container.
-# Do not create another SQL Server container.
+# Local development SQL Server.
+# Usage (from the repository root):
+#   docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
 name: smarttask-management
-services: {}
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: azuresqledge
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in docker/.env}
+    ports:
+      - "1433:1433"
+    volumes:
+      - smarttask-sqldata:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" -b -o /dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  smarttask-sqldata:
+    # Fixed name so existing local data in this volume is reused.
+    name: smarttask-sqldata

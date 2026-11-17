@@ -8,9 +8,13 @@ using Microsoft.Extensions.Options;
 using SmartTask.DAL.Storage;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Diagnostics;
+using System.Security.Claims;
 using Serilog;
 using Serilog.Events;
+using SmartTask.API.Logging;
+using SmartTask.API.OpenApi;
+using SmartTask.API.Http;
+using SmartTask.BLL.Interfaces.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,7 +36,17 @@ builder.Services.Configure<FileStorageOptions>(options =>
 });
 // Register services.
 builder.Services.AddControllersWithViews();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
+
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
 
 // Configurable per-IP rate limiting for sensitive authentication endpoints.
 var authRateLimitPermitLimit =
@@ -46,9 +60,35 @@ if (authRateLimitPermitLimit <= 0 || authRateLimitWindowSeconds <= 0)
         "RateLimiting:Auth:PermitLimit and WindowSeconds must be positive.");
 }
 
+// Per-user rate limiting for AI endpoints, which call a paid/limited provider.
+var aiRateLimitPermitLimit =
+    builder.Configuration.GetValue<int>("RateLimiting:Ai:PermitLimit");
+var aiRateLimitWindowSeconds =
+    builder.Configuration.GetValue<int>("RateLimiting:Ai:WindowSeconds");
+
+if (aiRateLimitPermitLimit <= 0 || aiRateLimitWindowSeconds <= 0)
+{
+    throw new InvalidOperationException(
+        "RateLimiting:Ai:PermitLimit and WindowSeconds must be positive.");
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("Ai", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey:
+                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } userId
+                    ? $"user:{userId}"
+                    : $"ip:{httpContext.Connection.RemoteIpAddress}",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = aiRateLimitPermitLimit,
+                Window = TimeSpan.FromSeconds(aiRateLimitWindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 
     options.AddPolicy("Auth", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -118,6 +158,9 @@ builder.Services.AddHealthChecks()
 builder.Services.AddDal(builder.Configuration);
 builder.Services.AddBll();
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentRequestContext, HttpCurrentRequestContext>();
+
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
@@ -132,46 +175,23 @@ if (app.Environment.IsDevelopment() &&
 }
 
 // Configure the HTTP request pipeline.
-app.UseSerilogRequestLogging(options =>
-{
-    options.GetLevel = (httpContext, _, exception) =>
-    {
-        if (exception is not null ||
-            httpContext.Response.StatusCode >= StatusCodes.Status500InternalServerError)
-        {
-            return LogEventLevel.Error;
-        }
-
-        if (httpContext.Response.StatusCode is
-            StatusCodes.Status401Unauthorized or
-            StatusCodes.Status403Forbidden)
-        {
-            return LogEventLevel.Warning;
-        }
-
-        return LogEventLevel.Information;
-    };
-
-    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
-    {
-        var activity = Activity.Current;
-
-        diagnosticContext.Set(
-            "TraceId",
-            activity?.TraceId.ToString() ?? httpContext.TraceIdentifier);
-
-        if (activity is not null)
-        {
-            diagnosticContext.Set("SpanId", activity.SpanId.ToString());
-        }
-    };
-});
+app.UseSerilogRequestLogging(RequestLoggingConfiguration.Configure);
 
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "SmartTask API v1");
+        options.RoutePrefix = "swagger";
+        options.DocumentTitle = "SmartTask API";
+    });
+}
+else
+{
+    app.UseHsts();
 }
 
 app.UseHttpsRedirection();
@@ -180,9 +200,9 @@ app.UseRouting();
 
 app.UseCors("Frontend");
 
-app.UseRateLimiter();
-
+// After authentication so the "Ai" policy can partition by user.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");

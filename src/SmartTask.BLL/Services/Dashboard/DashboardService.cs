@@ -2,6 +2,7 @@ using SmartTask.BLL.DTOs.Dashboard;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.Domain.Enums;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.BLL.Services.Dashboard;
 
@@ -11,13 +12,16 @@ public sealed class DashboardService : IDashboardService
 
     private readonly IDashboardRepository _dashboardRepository;
     private readonly IProjectMemberRepository _projectMemberRepository;
+    private readonly IUserAccountRepository _userAccountRepository;
 
     public DashboardService(
         IDashboardRepository dashboardRepository,
-        IProjectMemberRepository projectMemberRepository)
+        IProjectMemberRepository projectMemberRepository,
+        IUserAccountRepository userAccountRepository)
     {
         _dashboardRepository = dashboardRepository;
         _projectMemberRepository = projectMemberRepository;
+        _userAccountRepository = userAccountRepository;
     }
 
     private const int UpcomingTaskCount = 10;
@@ -50,13 +54,20 @@ public sealed class DashboardService : IDashboardService
         var startOfTodayUtc = nowUtc.Date;
         var startOfTomorrowUtc = startOfTodayUtc.AddDays(1);
 
-        return await _dashboardRepository.GetMyDashboardAsync(
+        var summary = await _dashboardRepository.GetMyDashboardAsync(
             userId,
             nowUtc,
             startOfTodayUtc,
             startOfTomorrowUtc,
             RecentTaskCount,
             cancellationToken);
+
+        summary.ProjectTotals =
+            await _dashboardRepository.GetMemberProjectTotalsAsync(
+                userId,
+                cancellationToken);
+
+        return summary;
     }
 
     public async Task<DashboardSummaryResponse?> GetProjectDashboardAsync(
@@ -118,6 +129,29 @@ public sealed class DashboardService : IDashboardService
 
         return await _dashboardRepository.GetProjectWorkloadAsync(
             projectId,
+            DateTime.UtcNow,
+            cancellationToken);
+    }
+
+    public async Task<AdminDashboardResponse?> GetAdminDashboardAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return null;
+        }
+
+        var roles = await _userAccountRepository.GetRolesAsync(
+            userId,
+            cancellationToken);
+
+        if (!roles.Contains(RoleNames.Admin, StringComparer.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return await _dashboardRepository.GetAdminDashboardAsync(
             DateTime.UtcNow,
             cancellationToken);
     }

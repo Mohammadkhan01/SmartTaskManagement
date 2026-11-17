@@ -22,19 +22,19 @@ public class SmartTaskDbContextTests
 
         var oldDate = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var auditLog = new AuditLog
+        var notification = new Notification
         {
-            Action = "Created",
-            EntityType = "Project",
+            RecipientUserId = "user-1",
+            Type = "Created",
             CreatedAtUtc = oldDate,
             UpdatedAtUtc = oldDate
         };
 
-        context.AuditLogs.Add(auditLog);
+        context.Notifications.Add(notification);
         context.SaveChanges();
 
-        Assert.NotEqual(oldDate, auditLog.CreatedAtUtc);
-        Assert.Null(auditLog.UpdatedAtUtc);
+        Assert.NotEqual(oldDate, notification.CreatedAtUtc);
+        Assert.Null(notification.UpdatedAtUtc);
     }
 
     [Fact]
@@ -42,26 +42,26 @@ public class SmartTaskDbContextTests
     {
         using var context = CreateDbContext();
 
-        var auditLog = new AuditLog
+        var notification = new Notification
         {
-            Action = "Created",
-            EntityType = "Project"
+            RecipientUserId = "user-1",
+            Type = "Created"
         };
 
-        context.AuditLogs.Add(auditLog);
+        context.Notifications.Add(notification);
         context.SaveChanges();
 
-        var originalCreatedAt = auditLog.CreatedAtUtc;
+        var originalCreatedAt = notification.CreatedAtUtc;
 
-        auditLog.Action = "Updated";
-        auditLog.CreatedAtUtc = new DateTime(
+        notification.Type = "Updated";
+        notification.CreatedAtUtc = new DateTime(
             2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         context.SaveChanges();
 
-        Assert.Equal(originalCreatedAt, auditLog.CreatedAtUtc);
-        Assert.NotNull(auditLog.UpdatedAtUtc);
-        Assert.True(auditLog.UpdatedAtUtc > originalCreatedAt);
+        Assert.Equal(originalCreatedAt, notification.CreatedAtUtc);
+        Assert.NotNull(notification.UpdatedAtUtc);
+        Assert.True(notification.UpdatedAtUtc > originalCreatedAt);
     }
 
     [Fact]
@@ -71,17 +71,40 @@ public class SmartTaskDbContextTests
 
         var oldDate = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var auditLog = new AuditLog
+        var notification = new Notification
         {
-            Action = "Created",
-            EntityType = "Project",
+            RecipientUserId = "user-1",
+            Type = "Created",
             CreatedAtUtc = oldDate
         };
 
-        context.AuditLogs.Add(auditLog);
+        context.Notifications.Add(notification);
         await context.SaveChangesAsync();
 
-        Assert.NotEqual(oldDate, auditLog.CreatedAtUtc);
-        Assert.Null(auditLog.UpdatedAtUtc);
+        Assert.NotEqual(oldDate, notification.CreatedAtUtc);
+        Assert.Null(notification.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public void SaveChanges_ShouldPersistAuditLogWithTimestampAndGeneratedId()
+    {
+        using var context = CreateDbContext();
+
+        var before = DateTime.UtcNow;
+
+        var auditLog = new AuditLog
+        {
+            Action = "ProjectCreated",
+            EntityName = "Project",
+            EntityId = Guid.NewGuid().ToString(),
+            IpAddress = "203.0.113.10"
+        };
+
+        context.AuditLogs.Add(auditLog);
+        context.SaveChanges();
+
+        Assert.True(auditLog.Id > 0);
+        Assert.True(auditLog.TimestampUtc >= before);
+        Assert.Equal("203.0.113.10", auditLog.IpAddress);
     }
 }

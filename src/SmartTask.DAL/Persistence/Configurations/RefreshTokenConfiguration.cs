@@ -44,7 +44,7 @@ public class RefreshTokenConfiguration
         builder.HasIndex(rt => rt.TokenHash)
             .IsUnique();
 
-        builder.HasIndex(rt => rt.UserId);
+        builder.HasIndex(rt => new { rt.UserId, rt.ExpiresAtUtc });
 
         builder.HasIndex(rt => rt.ExpiresAtUtc);
     }

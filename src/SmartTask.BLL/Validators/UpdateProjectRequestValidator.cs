@@ -1,5 +1,6 @@
 using FluentValidation;
 using SmartTask.BLL.DTOs.Projects;
+using SmartTask.Domain.Enums;
 
 namespace SmartTask.BLL.Validators;
 
@@ -19,6 +20,13 @@ public class UpdateProjectRequestValidator
         RuleFor(x => x.Description)
             .MaximumLength(2000)
             .WithMessage("Project description cannot exceed 2000 characters.");
+
+        RuleFor(x => x.Status)
+            .Must(status =>
+                !status.HasValue ||
+                Enum.IsDefined(typeof(ProjectStatus), status.Value))
+            .WithMessage("Invalid project status.");
+
         RuleFor(x => x.RowVersion)
     .NotEmpty()
     .WithMessage("Project version is required.")

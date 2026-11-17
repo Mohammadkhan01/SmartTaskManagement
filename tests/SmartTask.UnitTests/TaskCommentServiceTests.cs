@@ -27,7 +27,8 @@ public class TaskCommentServiceTests
             _notifications,
             _unitOfWork,
             new CreateTaskCommentRequestValidator(),
-            new UpdateTaskCommentRequestValidator());
+            new UpdateTaskCommentRequestValidator(),
+            new FakeCurrentRequestContext());
     }
 
     private TaskItem CreateTask(
@@ -132,7 +133,7 @@ public class TaskCommentServiceTests
 
         var activity = Assert.Single(_auditLogs.AddedLogs);
         Assert.Equal("CommentCreated", activity.Action);
-        Assert.Equal("Task", activity.EntityType);
+        Assert.Equal("Task", activity.EntityName);
         Assert.Equal(task.Id.ToString(), activity.EntityId);
         Assert.Equal("member-123", activity.UserId);
         Assert.Contains(result.Id.ToString(), activity.Details);
@@ -409,7 +410,7 @@ public class TaskCommentServiceTests
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<AuditLog> result = AddedLogs
-                .Where(a => a.EntityType == "Task" &&
+                .Where(a => a.EntityName == "Task" &&
                             a.EntityId == taskId.ToString())
                 .ToList();
 

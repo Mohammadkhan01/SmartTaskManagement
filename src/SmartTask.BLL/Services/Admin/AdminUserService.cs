@@ -1,10 +1,12 @@
 using System.Text.Json;
 using FluentValidation;
 using SmartTask.BLL.DTOs.Admin;
-using SmartTask.BLL.Exceptions;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.Domain.Entities;
+using SmartTask.Common.Constants;
+using SmartTask.Common.Exceptions;
+using SmartTask.Common.Utilities;
 
 namespace SmartTask.BLL.Services.Admin;
 
@@ -12,9 +14,9 @@ public sealed class AdminUserService : IAdminUserService
 {
     private static readonly string[] AllowedRoles =
     [
-        "Admin",
-        "Project Manager",
-        "Team Member"
+        RoleNames.Admin,
+        RoleNames.ProjectManager,
+        RoleNames.TeamMember
     ];
 
     private readonly IAdminUserRepository _adminUserRepository;
@@ -64,17 +66,15 @@ public sealed class AdminUserService : IAdminUserService
             query,
             cancellationToken);
 
-        var totalPages = totalCount == 0
-            ? 0
-            : (int)(((long)totalCount + query.PageSize - 1) / query.PageSize);
-
         return new AdminUserListResponse
         {
             Items = users.Select(MapToResponse).ToArray(),
             PageNumber = query.PageNumber,
             PageSize = query.PageSize,
             TotalCount = totalCount,
-            TotalPages = totalPages
+            TotalPages = Pagination.CalculateTotalPages(
+                totalCount,
+                query.PageSize)
         };
     }
 
@@ -117,12 +117,12 @@ public sealed class AdminUserService : IAdminUserService
             }
 
             var isActiveAdmin = user.IsActive &&
-                user.Roles.Contains("Admin", StringComparer.OrdinalIgnoreCase);
+                user.Roles.Contains(RoleNames.Admin, StringComparer.OrdinalIgnoreCase);
 
             if (!requestedIsActive && isActiveAdmin)
             {
                 var activeAdminCount =
-                    await _adminUserRepository.CountActiveInRoleAsync("Admin", ct);
+                    await _adminUserRepository.CountActiveInRoleAsync(RoleNames.Admin, ct);
 
                 if (activeAdminCount <= 1)
                 {
@@ -148,7 +148,7 @@ public sealed class AdminUserService : IAdminUserService
             {
                 UserId = actorUserId,
                 Action = "UserStatusChanged",
-                EntityType = "User",
+                EntityName = "User",
                 EntityId = userId,
                 IpAddress = ipAddress,
                 Details = JsonSerializer.Serialize(new
@@ -198,7 +198,7 @@ public sealed class AdminUserService : IAdminUserService
             }
 
             var isCurrentlyAdmin = user.Roles.Contains(
-                "Admin",
+                RoleNames.Admin,
                 StringComparer.OrdinalIgnoreCase);
 
             var alreadyHasRequestedRole = user.Roles.Count == 1 &&
@@ -218,7 +218,7 @@ public sealed class AdminUserService : IAdminUserService
                 isCurrentlyAdmin &&
                 !string.Equals(
                     requestedRole,
-                    "Admin",
+                    RoleNames.Admin,
                     StringComparison.OrdinalIgnoreCase);
 
             if (isChangingOwnAdminRole)
@@ -230,11 +230,11 @@ public sealed class AdminUserService : IAdminUserService
             if (user.IsActive && isCurrentlyAdmin &&
                 !string.Equals(
                     requestedRole,
-                    "Admin",
+                    RoleNames.Admin,
                     StringComparison.OrdinalIgnoreCase))
             {
                 var activeAdminCount =
-                    await _adminUserRepository.CountActiveInRoleAsync("Admin", ct);
+                    await _adminUserRepository.CountActiveInRoleAsync(RoleNames.Admin, ct);
 
                 if (activeAdminCount <= 1)
                 {
@@ -262,7 +262,7 @@ public sealed class AdminUserService : IAdminUserService
             {
                 UserId = actorUserId,
                 Action = "UserRoleChanged",
-                EntityType = "User",
+                EntityName = "User",
                 EntityId = userId,
                 IpAddress = ipAddress,
                 Details = JsonSerializer.Serialize(new

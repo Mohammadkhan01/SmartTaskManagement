@@ -1,5 +1,6 @@
 using SmartTask.BLL.DTOs.Projects;
 using SmartTask.BLL.Validators;
+using SmartTask.Domain.Enums;
 
 namespace SmartTask.UnitTests;
 
@@ -42,5 +43,46 @@ public class UpdateProjectRequestValidatorTests
         Assert.Contains(
             result.Errors,
             error => error.PropertyName == nameof(UpdateProjectRequest.RowVersion));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(ProjectStatus.Planning)]
+    [InlineData(ProjectStatus.Active)]
+    [InlineData(ProjectStatus.Archived)]
+    public void Validate_ShouldAcceptOmittedOrDefinedStatus(ProjectStatus? status)
+    {
+        var request = new UpdateProjectRequest
+        {
+            Name = "Valid project",
+            Status = status,
+            RowVersion = Convert.ToBase64String(
+                [1, 2, 3, 4, 5, 6, 7, 8])
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(6)]
+    public void Validate_ShouldRejectUndefinedStatus(int status)
+    {
+        var request = new UpdateProjectRequest
+        {
+            Name = "Valid project",
+            Status = (ProjectStatus)status,
+            RowVersion = Convert.ToBase64String(
+                [1, 2, 3, 4, 5, 6, 7, 8])
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Errors,
+            error => error.PropertyName == nameof(UpdateProjectRequest.Status));
     }
 }

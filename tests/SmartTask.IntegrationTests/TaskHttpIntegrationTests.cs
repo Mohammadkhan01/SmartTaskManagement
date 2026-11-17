@@ -61,6 +61,7 @@ public sealed class TaskHttpIntegrationTests
                 {
                     Id = projectId,
                     Name = "Task Integration Test Project",
+                    Status = ProjectStatus.Active,
                     CreatedByUserId = managerId
                 });
 
@@ -83,6 +84,14 @@ public sealed class TaskHttpIntegrationTests
                         UserId = memberId,
                         ProjectRole = ProjectMemberRole.Member
                     });
+
+                await AddGlobalRoleAsync(context, "PROJECT MANAGER", managerId);
+                await AddGlobalRoleAsync(
+                    context,
+                    "TEAM MEMBER",
+                    assignedUserId,
+                    memberId,
+                    outsiderId);
 
                 await context.SaveChangesAsync();
             }
@@ -338,6 +347,23 @@ public sealed class TaskHttpIntegrationTests
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 deletedTaskResponse.StatusCode);
+
+            // 11. Task lifecycle actions are persisted as audit history.
+            await using (var auditContext = new SmartTaskDbContext(options))
+            {
+                var auditActions = await auditContext.AuditLogs
+                    .AsNoTracking()
+                    .Where(a =>
+                        a.EntityName == "Task" &&
+                        a.EntityId == taskId.ToString())
+                    .Select(a => a.Action)
+                    .ToListAsync();
+
+                Assert.Contains("TaskCreated", auditActions);
+                Assert.Contains("TaskStatusChanged", auditActions);
+                Assert.Contains("TaskUpdated", auditActions);
+                Assert.Contains("TaskDeleted", auditActions);
+            }
         }
         finally
         {
@@ -552,6 +578,7 @@ public sealed class TaskHttpIntegrationTests
                 };
 
                 context.Tasks.Add(task);
+                await AddGlobalRoleAsync(context, "PROJECT MANAGER", managerId);
 
                 await context.SaveChangesAsync();
 
@@ -659,6 +686,7 @@ public sealed class TaskHttpIntegrationTests
                 };
 
                 context.Tasks.Add(task);
+                await AddGlobalRoleAsync(context, "PROJECT MANAGER", managerId);
                 await context.SaveChangesAsync();
 
                 originalRowVersion = task.RowVersion.ToArray();
@@ -730,6 +758,24 @@ await using (var verificationContext = new SmartTaskDbContext(options))
         };
     }
 
+    private static async Task AddGlobalRoleAsync(
+        SmartTaskDbContext context,
+        string normalizedRoleName,
+        params string[] userIds)
+    {
+        var role = await context.Roles
+            .SingleAsync(r => r.NormalizedName == normalizedRoleName);
+
+        foreach (var userId in userIds)
+        {
+            context.UserRoles.Add(new IdentityUserRole<string>
+            {
+                UserId = userId,
+                RoleId = role.Id
+            });
+        }
+    }
+
     private static void AuthenticateAs(HttpClient client, string userId)
     {
         client.DefaultRequestHeaders.Remove("X-Test-UserId");
@@ -742,6 +788,11 @@ await using (var verificationContext = new SmartTaskDbContext(options))
         params string[] userIds)
     {
         await using var context = new SmartTaskDbContext(options);
+
+        // Audit history references users with a restrictive FK.
+        context.AuditLogs.RemoveRange(await context.AuditLogs
+            .Where(a => a.UserId != null && userIds.Contains(a.UserId))
+            .ToListAsync());
 
         // Delete tasks first because the project-task FK restricts deletion.
         var tasks = await context.Tasks

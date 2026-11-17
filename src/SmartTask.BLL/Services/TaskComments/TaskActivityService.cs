@@ -53,10 +53,10 @@ public sealed class TaskActivityService : ITaskActivityService
                 Id = activity.Id,
                 UserId = activity.UserId,
                 Action = activity.Action,
-                EntityType = activity.EntityType,
+                EntityName = activity.EntityName,
                 EntityId = activity.EntityId,
                 Details = activity.Details,
-                CreatedAtUtc = activity.CreatedAtUtc
+                TimestampUtc = activity.TimestampUtc
             })
             .ToList();
     }

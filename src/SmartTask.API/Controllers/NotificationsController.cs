@@ -8,7 +8,7 @@ namespace SmartTask.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/notifications")]
+[Route("api/v1/notifications")]
 public sealed class NotificationsController : ControllerBase
 {
     private readonly INotificationService _notificationService;

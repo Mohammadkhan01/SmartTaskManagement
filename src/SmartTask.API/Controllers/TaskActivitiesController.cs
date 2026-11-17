@@ -8,7 +8,7 @@ namespace SmartTask.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/tasks/{taskId:guid}/activity")]
+[Route("api/v1/tasks/{taskId:guid}/activity")]
 public sealed class TaskActivitiesController : ControllerBase
 {
     private readonly ITaskActivityService _taskActivityService;

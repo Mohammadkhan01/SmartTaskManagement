@@ -1,14 +1,15 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using SmartTask.Common.Constants;
 namespace SmartTask.DAL.Identity;
 
 public static class IdentityRoleSeeder
 {
     private static readonly string[] Roles =
     [
-        "Admin",
-        "Project Manager",
-        "Team Member"
+        RoleNames.Admin,
+        RoleNames.ProjectManager,
+        RoleNames.TeamMember
     ];
 
     public static async Task SeedAsync(

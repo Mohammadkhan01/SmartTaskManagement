@@ -1,5 +1,6 @@
 using FluentValidation;
 using SmartTask.BLL.DTOs.Admin;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.BLL.Validators.Admin;
 
@@ -8,9 +9,9 @@ public sealed class UpdateUserRoleRequestValidator
 {
     private static readonly string[] AllowedRoles =
     [
-        "Admin",
-        "Project Manager",
-        "Team Member"
+        RoleNames.Admin,
+        RoleNames.ProjectManager,
+        RoleNames.TeamMember
     ];
 
     public UpdateUserRoleRequestValidator()

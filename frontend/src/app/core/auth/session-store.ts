@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, computed, signal } from '@angular/core';
 
 export interface AuthUser {
   userId: string;
@@ -15,6 +15,11 @@ export class SessionStore {
 
   readonly user = this.userState.asReadonly();
   readonly isAuthenticated = signal(false);
+  readonly isAdmin = computed(() => this.hasRole('Admin'));
+
+  hasRole(role: string): boolean {
+    return this.userState()?.roles.includes(role) ?? false;
+  }
 
   get accessToken(): string | null {
     return this.tokenState();

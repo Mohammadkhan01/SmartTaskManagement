@@ -17,6 +17,8 @@ using SmartTask.BLL.Services.Notifications;
 using SmartTask.BLL.Services.Dashboard;
 using SmartTask.BLL.Services.Admin;
 using SmartTask.BLL.Validators.Admin;
+using SmartTask.BLL.DTOs.AI;
+using SmartTask.BLL.Services.AI;
 
 namespace SmartTask.BLL;
 
@@ -96,6 +98,12 @@ public static class DependencyInjection
 
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<ITaskAttachmentService, TaskAttachmentService>();
+
+        // AI services
+        services.AddScoped<IAIService, AIService>();
+        services.AddScoped<
+            IValidator<EnhanceTaskDescriptionRequest>,
+            EnhanceTaskDescriptionRequestValidator>();
 
         return services;
     }

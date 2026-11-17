@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartTask.DAL.Identity;
 using SmartTask.Domain.Entities;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.DAL.Persistence.Configurations;
 
@@ -11,16 +12,25 @@ public class TaskItemConfiguration
 {
     public void Configure(EntityTypeBuilder<TaskItem> builder)
     {
-        builder.ToTable("Tasks");
+        builder.ToTable("Tasks", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_Tasks_Status",
+                "[Status] IN (1, 2, 3, 4)");
+
+            table.HasCheckConstraint(
+                "CK_Tasks_Priority",
+                "[Priority] IN (1, 2, 3, 4)");
+        });
 
         builder.HasKey(t => t.Id);
 
         builder.Property(t => t.Title)
             .IsRequired()
-            .HasMaxLength(200);
+            .HasMaxLength(FieldLimits.TaskTitleMaxLength);
 
         builder.Property(t => t.Description)
-            .HasMaxLength(5000);
+            .HasMaxLength(FieldLimits.TaskDescriptionMaxLength);
 
         builder.Property(t => t.Status)
             .IsRequired();
@@ -56,7 +66,7 @@ public class TaskItemConfiguration
 
         builder.HasIndex(t => t.DueDateUtc);
 
-        builder.HasIndex(t => t.Priority);
+        builder.HasIndex(t => new { t.ProjectId, t.Priority });
 
         // Optimistic concurrency
         builder.Property(t => t.RowVersion)

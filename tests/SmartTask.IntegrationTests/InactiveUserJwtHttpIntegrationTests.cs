@@ -87,7 +87,7 @@ public sealed class InactiveUserJwtHttpIntegrationTests
                 new AuthenticationHeaderValue("Bearer", accessToken);
 
             // The active account must be allowed to authenticate.
-            var activeResponse = await client.GetAsync("/api/auth/me");
+            var activeResponse = await client.GetAsync("/api/v1/auth/me");
 
             Assert.Equal(HttpStatusCode.OK, activeResponse.StatusCode);
 
@@ -104,7 +104,7 @@ public sealed class InactiveUserJwtHttpIntegrationTests
             }
 
             // Reuse the exact same, still-valid JWT.
-            var inactiveResponse = await client.GetAsync("/api/auth/me");
+            var inactiveResponse = await client.GetAsync("/api/v1/auth/me");
 
             Assert.Equal(
                 HttpStatusCode.Unauthorized,

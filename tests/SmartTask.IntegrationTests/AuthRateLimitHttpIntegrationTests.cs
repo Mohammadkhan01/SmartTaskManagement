@@ -33,7 +33,7 @@ public sealed class AuthRateLimitHttpIntegrationTests
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
-                "/api/auth/login")
+                "/api/v1/auth/login")
             {
                 Content = new StringContent("{}")
             };
@@ -47,7 +47,7 @@ public sealed class AuthRateLimitHttpIntegrationTests
 
         using var eleventhRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            "/api/auth/login")
+            "/api/v1/auth/login")
         {
             Content = new StringContent("{}")
         };

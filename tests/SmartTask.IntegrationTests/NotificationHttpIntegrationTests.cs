@@ -75,7 +75,7 @@ public sealed class NotificationHttpIntegrationTests
             AuthenticateAs(client, userAId);
 
             var listResponse = await client.GetAsync(
-                "/api/notifications");
+                "/api/v1/notifications");
 
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
@@ -99,7 +99,7 @@ public sealed class NotificationHttpIntegrationTests
 
             // 2. User A cannot mark User B's notification as read.
             var unauthorizedReadResponse = await client.PatchAsync(
-                $"/api/notifications/{userBNotificationId}/read",
+                $"/api/v1/notifications/{userBNotificationId}/read",
                 content: null);
 
             Assert.Equal(
@@ -108,7 +108,7 @@ public sealed class NotificationHttpIntegrationTests
 
             // 3. User A can mark their own notification as read.
             var markReadResponse = await client.PatchAsync(
-                $"/api/notifications/{userANotificationToReadId}/read",
+                $"/api/v1/notifications/{userANotificationToReadId}/read",
                 content: null);
 
             Assert.Equal(
@@ -117,7 +117,7 @@ public sealed class NotificationHttpIntegrationTests
 
             // 4. Mark-all updates only User A's remaining unread notification.
             var markAllResponse = await client.PatchAsync(
-                "/api/notifications/read-all",
+                "/api/v1/notifications/read-all",
                 content: null);
 
             Assert.Equal(HttpStatusCode.OK, markAllResponse.StatusCode);

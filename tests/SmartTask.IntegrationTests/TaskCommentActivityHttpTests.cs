@@ -80,7 +80,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, memberId);
 
             var createResponse = await client.PostAsJsonAsync(
-                $"/api/tasks/{taskId}/comments",
+                $"/api/v1/tasks/{taskId}/comments",
                 new CreateTaskCommentRequest
                 {
                     Content = "Original comment."
@@ -109,7 +109,7 @@ public sealed class TaskCommentActivityHttpTests
 
             // Submit an update using the original, now-stale RowVersion.
             var staleUpdateResponse = await client.PutAsJsonAsync(
-                $"/api/task-comments/{createdComment.Id}",
+                $"/api/v1/task-comments/{createdComment.Id}",
                 new UpdateTaskCommentRequest
                 {
                     Content = "This stale update must not be saved.",
@@ -220,7 +220,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, memberId);
 
             var createResponse = await client.PostAsJsonAsync(
-                $"/api/tasks/{taskId}/comments",
+                $"/api/v1/tasks/{taskId}/comments",
                 new CreateTaskCommentRequest
                 {
                     Content = "Initial integration test comment."
@@ -243,7 +243,7 @@ public sealed class TaskCommentActivityHttpTests
 
             // 2. The author updates their comment.
             var updateResponse = await client.PutAsJsonAsync(
-                $"/api/task-comments/{createdComment.Id}",
+                $"/api/v1/task-comments/{createdComment.Id}",
                 new UpdateTaskCommentRequest
                 {
                     Content = "Updated integration test comment.",
@@ -265,7 +265,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, managerId);
 
             var unauthorizedUpdateResponse = await client.PutAsJsonAsync(
-                $"/api/task-comments/{createdComment.Id}",
+                $"/api/v1/task-comments/{createdComment.Id}",
                 new UpdateTaskCommentRequest
                 {
                     Content = "Unauthorized update attempt.",
@@ -280,7 +280,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, managerId);
 
             var listResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/comments");
+                $"/api/v1/tasks/{taskId}/comments");
 
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
@@ -296,7 +296,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, memberId);
 
             var activityResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/activity");
+                $"/api/v1/tasks/{taskId}/activity");
 
             Assert.Equal(HttpStatusCode.OK, activityResponse.StatusCode);
 
@@ -314,14 +314,14 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, outsiderId);
 
             var outsiderCommentsResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/comments");
+                $"/api/v1/tasks/{taskId}/comments");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
                 outsiderCommentsResponse.StatusCode);
 
             var outsiderActivityResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/activity");
+                $"/api/v1/tasks/{taskId}/activity");
 
             Assert.Equal(
                 HttpStatusCode.NotFound,
@@ -331,7 +331,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, managerId);
 
             var deleteResponse = await client.DeleteAsync(
-                $"/api/task-comments/{createdComment.Id}");
+                $"/api/v1/task-comments/{createdComment.Id}");
 
             Assert.Equal(
                 HttpStatusCode.NoContent,
@@ -339,7 +339,7 @@ public sealed class TaskCommentActivityHttpTests
 
             // 8. A deleted comment is no longer returned.
             var afterDeleteResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/comments");
+                $"/api/v1/tasks/{taskId}/comments");
 
             Assert.Equal(
                 HttpStatusCode.OK,
@@ -357,7 +357,7 @@ public sealed class TaskCommentActivityHttpTests
             AuthenticateAs(client, memberId);
 
             var finalActivityResponse = await client.GetAsync(
-                $"/api/tasks/{taskId}/activity");
+                $"/api/v1/tasks/{taskId}/activity");
 
             Assert.Equal(
                 HttpStatusCode.OK,
@@ -416,7 +416,7 @@ public sealed class TaskCommentActivityHttpTests
         // Remove activity records before deleting their referenced users.
         var activities = await context.AuditLogs
             .Where(a =>
-                a.EntityType == "Task" &&
+                a.EntityName == "Task" &&
                 a.EntityId == taskId.ToString())
             .ToListAsync();
 

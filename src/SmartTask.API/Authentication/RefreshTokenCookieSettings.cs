@@ -8,7 +8,7 @@ public sealed class RefreshTokenCookieSettings
 
     public string Name { get; set; } = "smarttask.refresh";
 
-    // Covers both /api/auth and /api/v1/auth routes.
+    // Must cover the versioned /api/v1/auth routes.
     public string Path { get; set; } = "/api/";
 
     public SameSiteMode SameSite { get; set; } = SameSiteMode.Lax;

@@ -19,7 +19,6 @@ public sealed class ControllerBoundaryTests
                 !type.IsAbstract &&
                 type.Namespace == typeof(TasksController).Namespace &&
                 typeof(ControllerBase).IsAssignableFrom(type))
-            .Where(type => type != typeof(WeatherForecastController))
             .ToArray();
 
         Assert.NotEmpty(controllers);

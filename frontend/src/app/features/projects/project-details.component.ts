@@ -1,12 +1,15 @@
 import { DatePipe } from '@angular/common';
+import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { validationMessage } from '../../core/api/api-error';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   Project,
   ProjectMember,
   ProjectMemberRole,
+  PROJECT_STATUS_LABELS,
   ProjectStatus,
   UpdateProjectRequest
 } from '../../core/projects/project.models';
@@ -15,7 +18,8 @@ import { ProjectService } from '../../core/projects/project.service';
 @Component({
   selector: 'app-project-details',
   standalone: true,
-  imports: [DatePipe, RouterLink, ReactiveFormsModule],
+  providers: [DatePipe],
+  imports: [UtcDatePipe, RouterLink, ReactiveFormsModule],
   template: `
     <main class="page">
       <header><a routerLink="/projects">← Back to projects</a></header>
@@ -36,6 +40,7 @@ import { ProjectService } from '../../core/projects/project.service';
               <span class="status">{{ statusLabel(data.status) }}</span>
             </div>
             <div class="actions">
+              <a class="button" [routerLink]="['/projects', data.id, 'tasks']">View tasks</a>
               <button type="button" class="secondary" (click)="toggleEdit()">
                 {{ editing() ? 'Cancel edit' : 'Edit project' }}
               </button>
@@ -54,6 +59,13 @@ import { ProjectService } from '../../core/projects/project.service';
               }
               <label for="description">Description</label>
               <textarea id="description" formControlName="description" rows="5" maxlength="2000"></textarea>
+              <label for="status">Status</label>
+              <select id="status" formControlName="status">
+                @for (option of statusOptions; track option.value) {
+                  <option [ngValue]="option.value">{{ option.label }}</option>
+                }
+              </select>
+              <small class="muted">Tasks can only be assigned while the project is Active.</small>
               @if (saveError()) {
                 <p class="error" role="alert">{{ saveError() }}</p>
               }
@@ -64,10 +76,13 @@ import { ProjectService } from '../../core/projects/project.service';
           } @else {
             <h2>Description</h2>
             <p class="description">{{ data.description || 'No description provided.' }}</p>
+            @if (data.status !== activeStatus) {
+              <p class="hint">This project is {{ statusLabel(data.status) }}. Set it to Active to assign tasks.</p>
+            }
           }
 
           <dl>
-            <div><dt>Created</dt><dd>{{ data.createdAtUtc | date:'medium' }}</dd></div>
+            <div><dt>Created</dt><dd>{{ data.createdAtUtc | utcDate:'medium' }}</dd></div>
             <div><dt>Project ID</dt><dd>{{ data.id }}</dd></div>
           </dl>
         </section>
@@ -139,13 +154,15 @@ import { ProjectService } from '../../core/projects/project.service';
     .actions { display:flex; gap:8px; flex-wrap:wrap; }
     form { display:grid; gap:10px; margin-top:24px; }
     label { margin-top:10px; font-size:13px; font-weight:600; }
-    input, textarea { width:100%; padding:11px; border:1px solid #cbd5e1; border-radius:7px; font:inherit; }
+    input, textarea, select { width:100%; padding:11px; border:1px solid #cbd5e1; border-radius:7px; font:inherit; }
     dl { margin-top:28px; }
     dl div { display:grid; grid-template-columns:140px 1fr; gap:12px; padding:12px 0; border-top:1px solid #edf0f4; }
     dt { color:#64748b; font-size:13px; }
     dd { margin:0; font-size:13px; overflow-wrap:anywhere; }
     .error { color:#b91c1c; }
     .muted { color:#64748b; font-size:14px; }
+    .hint { padding:10px 12px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:13px; }
+    a.button { display:inline-block; border-radius:8px; padding:10px 16px; background:#1d4ed8; color:white; font-size:inherit; }
     button { border:0; border-radius:8px; padding:10px 16px; background:#1d4ed8; color:white; cursor:pointer; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     button.secondary { background:#e2e8f0; color:#1e293b; }
@@ -186,8 +203,15 @@ export class ProjectDetailsComponent {
 
   readonly editForm = this.fb.group({
     name: ['', [Validators.required, Validators.maxLength(150)]],
-    description: ['', Validators.maxLength(2000)]
+    description: ['', Validators.maxLength(2000)],
+    status: [ProjectStatus.Planning, Validators.required]
   });
+
+  readonly activeStatus = ProjectStatus.Active;
+  readonly statusOptions = Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => ({
+    value: Number(value) as ProjectStatus,
+    label
+  }));
 
   readonly memberForm = this.fb.group({
     userId: ['', Validators.required]
@@ -267,7 +291,8 @@ export class ProjectDetailsComponent {
     if (this.editing()) {
       this.editForm.reset({
         name: current.name,
-        description: current.description ?? ''
+        description: current.description ?? '',
+        status: current.status
       });
     }
   }
@@ -279,6 +304,7 @@ export class ProjectDetailsComponent {
     const request: UpdateProjectRequest = {
       name: this.editForm.controls.name.value?.trim() ?? '',
       description: this.editForm.controls.description.value?.trim() || null,
+      status: this.editForm.controls.status.value ?? current.status,
       rowVersion: current.rowVersion
     };
 
@@ -302,6 +328,8 @@ export class ProjectDetailsComponent {
           this.saveError.set('This project was changed by someone else. Reload the latest version before editing again.');
         } else if (error instanceof HttpErrorResponse && error.status === 403) {
           this.saveError.set('You do not have permission to edit this project.');
+        } else if (error instanceof HttpErrorResponse && error.status === 400) {
+          this.saveError.set(validationMessage(error) ?? 'Some project details are invalid.');
         } else {
           this.saveError.set('Could not save changes. Please try again.');
         }
@@ -378,13 +406,7 @@ export class ProjectDetailsComponent {
   }
 
   statusLabel(status: ProjectStatus): string {
-    return ({
-      [ProjectStatus.Planning]: 'Planning',
-      [ProjectStatus.Active]: 'Active',
-      [ProjectStatus.Completed]: 'Completed',
-      [ProjectStatus.OnHold]: 'On hold',
-      [ProjectStatus.Archived]: 'Archived'
-    } as Record<number, string>)[status] ?? 'Unknown';
+    return PROJECT_STATUS_LABELS[status] ?? 'Unknown';
   }
 
   roleLabel(role: ProjectMemberRole): string {

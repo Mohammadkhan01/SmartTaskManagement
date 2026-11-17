@@ -4,6 +4,7 @@ using SmartTask.BLL.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SmartTask.Common.Exceptions;
 
 namespace SmartTask.API.Exceptions;
 
@@ -77,6 +78,30 @@ if (exception is OperationCanceledException &&
                     Status = StatusCodes.Status401Unauthorized,
                     Title = "Unauthorized",
                     Detail = "The supplied authentication credentials are invalid or expired."
+                },
+
+            AiProviderTimeoutException aiTimeoutException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status504GatewayTimeout,
+                    Title = "AI provider timeout",
+                    Detail = aiTimeoutException.Message
+                },
+
+            AiInvalidResponseException aiInvalidResponseException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status502BadGateway,
+                    Title = "Invalid AI provider response",
+                    Detail = aiInvalidResponseException.Message
+                },
+
+            AiProviderUnavailableException aiUnavailableException =>
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status503ServiceUnavailable,
+                    Title = "AI provider unavailable",
+                    Detail = aiUnavailableException.Message
                 },
 
             ArgumentException argumentException =>

@@ -1,5 +1,6 @@
 using FluentValidation;
 using SmartTask.BLL.DTOs.Tasks;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.BLL.Validators;
 
@@ -12,12 +13,14 @@ public class UpdateTaskRequestValidator
             .NotEmpty()
             .Must(title => !string.IsNullOrWhiteSpace(title))
             .WithMessage("Task title is required.")
-            .MaximumLength(200)
-            .WithMessage("Task title cannot exceed 200 characters.");
+            .MaximumLength(FieldLimits.TaskTitleMaxLength)
+            .WithMessage(
+                $"Task title cannot exceed {FieldLimits.TaskTitleMaxLength} characters.");
 
         RuleFor(x => x.Description)
-            .MaximumLength(5000)
-            .WithMessage("Task description cannot exceed 5000 characters.");
+            .MaximumLength(FieldLimits.TaskDescriptionMaxLength)
+            .WithMessage(
+                $"Task description cannot exceed {FieldLimits.TaskDescriptionMaxLength} characters.");
 
         RuleFor(x => x.Priority)
             .IsInEnum()

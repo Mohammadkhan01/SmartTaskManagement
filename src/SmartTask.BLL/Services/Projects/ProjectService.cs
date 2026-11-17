@@ -1,21 +1,25 @@
 using FluentValidation;
 using SmartTask.BLL.DTOs.Projects;
-using SmartTask.BLL.Exceptions;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
+using SmartTask.Common.Constants;
+using SmartTask.Common.Exceptions;
+using SmartTask.Common.Utilities;
 
 namespace SmartTask.BLL.Services.Projects;
 
 public class ProjectService : IProjectService
 {
-    private const string AdminRole = "Admin";
-    private const string ProjectManagerRole = "Project Manager";
+    private const string AdminRole = RoleNames.Admin;
+    private const string ProjectManagerRole = RoleNames.ProjectManager;
 
     private readonly IProjectRepository _projectRepository;
     private readonly IProjectMemberRepository _memberRepository;
     private readonly IUserAccountRepository _userRepository;
+    private readonly IAuditLogRepository _auditLogRepository;
+    private readonly ICurrentRequestContext _requestContext;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateProjectRequest> _createValidator;
     private readonly IValidator<UpdateProjectRequest> _updateValidator;
@@ -25,18 +29,22 @@ public class ProjectService : IProjectService
         IProjectRepository projectRepository,
         IProjectMemberRepository memberRepository,
         IUserAccountRepository userRepository,
+        IAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         IValidator<CreateProjectRequest> createValidator,
         IValidator<UpdateProjectRequest> updateValidator,
-        IValidator<ProjectListQueryRequest> projectListValidator)
+        IValidator<ProjectListQueryRequest> projectListValidator,
+        ICurrentRequestContext requestContext)
     {
         _projectRepository = projectRepository;
         _memberRepository = memberRepository;
         _userRepository = userRepository;
+        _auditLogRepository = auditLogRepository;
         _unitOfWork = unitOfWork;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _projectListValidator = projectListValidator;
+        _requestContext = requestContext;
     }
 
     public async Task<ProjectResponse> CreateAsync(
@@ -76,6 +84,11 @@ public class ProjectService : IProjectService
 
         _projectRepository.Add(project);
         _memberRepository.Add(managerMembership);
+
+        AddAuditLog(ownerId, "ProjectCreated", project.Id, new
+        {
+            Status = project.Status.ToString()
+        });
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -133,16 +146,15 @@ public class ProjectService : IProjectService
                 query,
                 cancellationToken);
 
-        var totalPages = (int)(
-            ((long)totalCount + query.PageSize - 1) / query.PageSize);
-
         return new ProjectListResponse
         {
             Items = projects.Select(MapToResponse).ToList(),
             PageNumber = query.PageNumber,
             PageSize = query.PageSize,
             TotalCount = totalCount,
-            TotalPages = totalPages
+            TotalPages = Pagination.CalculateTotalPages(
+                totalCount,
+                query.PageSize)
         };
     }
 
@@ -224,8 +236,42 @@ public class ProjectService : IProjectService
             project,
             originalRowVersion);
 
-        project.Name = request.Name.Trim();
-        project.Description = request.Description?.Trim();
+        var previousStatus = project.Status;
+        var newName = request.Name.Trim();
+        var newDescription = request.Description?.Trim();
+
+        var changedFields = new (string Field, bool Changed)[]
+            {
+                (nameof(Project.Name), project.Name != newName),
+                (nameof(Project.Description), project.Description != newDescription),
+                (nameof(Project.Status),
+                    request.Status.HasValue && request.Status.Value != previousStatus)
+            }
+            .Where(change => change.Changed)
+            .Select(change => change.Field)
+            .ToList();
+
+        project.Name = newName;
+        project.Description = newDescription;
+
+        if (request.Status.HasValue)
+        {
+            project.Status = request.Status.Value;
+        }
+
+        AddAuditLog(userId, "ProjectUpdated", project.Id, new
+        {
+            ChangedFields = changedFields
+        });
+
+        if (project.Status != previousStatus)
+        {
+            AddAuditLog(userId, "ProjectStatusChanged", project.Id, new
+            {
+                PreviousStatus = previousStatus.ToString(),
+                NewStatus = project.Status.ToString()
+            });
+        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -258,6 +304,8 @@ public class ProjectService : IProjectService
 
         project.IsDeleted = true;
         project.DeletedAtUtc = DateTime.UtcNow;
+
+        AddAuditLog(userId, "ProjectDeleted", project.Id, new { });
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -378,6 +426,12 @@ public class ProjectService : IProjectService
 
         _memberRepository.Add(membership);
 
+        AddAuditLog(requesterUserId, "ProjectMemberAdded", projectId, new
+        {
+            MemberUserId = user.Id,
+            ProjectRole = membership.ProjectRole.ToString()
+        });
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new ProjectMemberResponse
@@ -428,9 +482,31 @@ public class ProjectService : IProjectService
 
         _memberRepository.Remove(membership);
 
+        AddAuditLog(requesterUserId, "ProjectMemberRemoved", projectId, new
+        {
+            MemberUserId = memberUserId
+        });
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private void AddAuditLog(
+        string userId,
+        string action,
+        Guid projectId,
+        object details)
+    {
+        _auditLogRepository.Add(new AuditLog
+        {
+            UserId = userId,
+            Action = action,
+            EntityName = "Project",
+            EntityId = projectId.ToString(),
+            Details = System.Text.Json.JsonSerializer.Serialize(details),
+            IpAddress = _requestContext.IpAddress
+        });
     }
 
     private async Task EnsureCanCreateProjectAsync(

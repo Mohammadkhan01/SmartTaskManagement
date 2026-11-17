@@ -20,7 +20,7 @@ public sealed class TaskAttachmentsController : ControllerBase
         _attachmentService = attachmentService;
     }
 
-    [HttpPost("api/tasks/{taskId:guid}/attachments")]
+    [HttpPost("api/v1/tasks/{taskId:guid}/attachments")]
     [RequestSizeLimit(MaxRequestSize)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxRequestSize)]
     [ProducesResponseType(typeof(TaskAttachmentResponse), StatusCodes.Status201Created)]
@@ -29,7 +29,7 @@ public sealed class TaskAttachmentsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaskAttachmentResponse>> Upload(
         Guid taskId,
-        [FromForm] IFormFile? file,
+        IFormFile? file,
         CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -59,7 +59,7 @@ public sealed class TaskAttachmentsController : ControllerBase
             attachment);
     }
 
-    [HttpGet("api/tasks/{taskId:guid}/attachments")]
+    [HttpGet("api/v1/tasks/{taskId:guid}/attachments")]
     [ProducesResponseType(typeof(IReadOnlyList<TaskAttachmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -83,7 +83,7 @@ public sealed class TaskAttachmentsController : ControllerBase
         return Ok(attachments);
     }
 
-    [HttpGet("api/task-attachments/{attachmentId:guid}")]
+    [HttpGet("api/v1/task-attachments/{attachmentId:guid}")]
     [ProducesResponseType(typeof(TaskAttachmentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -108,7 +108,7 @@ public sealed class TaskAttachmentsController : ControllerBase
     }
 
 
-[HttpGet("api/task-attachments/{attachmentId:guid}/download")]
+[HttpGet("api/v1/task-attachments/{attachmentId:guid}/download")]
 [ProducesResponseType(StatusCodes.Status200OK)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -137,7 +137,7 @@ public async Task<IActionResult> Download(
 
 
 
-    [HttpDelete("api/task-attachments/{attachmentId:guid}")]
+    [HttpDelete("api/v1/task-attachments/{attachmentId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

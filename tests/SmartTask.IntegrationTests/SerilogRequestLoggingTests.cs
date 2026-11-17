@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using SmartTask.API.Logging;
 using System.Collections.Concurrent;
 
 namespace SmartTask.IntegrationTests;
@@ -13,10 +16,7 @@ public class SerilogRequestLoggingTests
     public async Task RequestLogging_Records401AndTraceId_WithoutQueryString()
     {
         var sink = new CollectingSink();
-        await using var app = CreateApp(sink, (context, _, _) =>
-            context.Response.StatusCode == 401
-                ? LogEventLevel.Warning
-                : LogEventLevel.Information);
+        await using var app = CreateApp(sink);
 
         app.Run(context =>
         {
@@ -32,10 +32,7 @@ public class SerilogRequestLoggingTests
 
         Assert.Equal(401, (int)response.StatusCode);
 
-        var logEvent = Assert.Single(
-            sink.Events,
-            e => e.Properties.ContainsKey("RequestMethod") &&
-                 e.Properties.ContainsKey("RequestPath"));
+        var logEvent = await WaitForRequestEventAsync(sink);
 
         Assert.Equal(LogEventLevel.Warning, logEvent.Level);
         Assert.Equal(401, ((ScalarValue)logEvent.Properties["StatusCode"]).Value);
@@ -57,10 +54,7 @@ public class SerilogRequestLoggingTests
         var expectedException = new InvalidOperationException(
             "Safe test failure.");
 
-        await using var app = CreateApp(sink, (_, _, exception) =>
-            exception is not null
-                ? LogEventLevel.Error
-                : LogEventLevel.Information);
+        await using var app = CreateApp(sink);
 
         app.Run(_ => throw expectedException);
 
@@ -71,12 +65,10 @@ public class SerilogRequestLoggingTests
 
         Assert.Equal(500, (int)response.StatusCode);
 
-        var logEvent = Assert.Single(
-            sink.Events,
-            e => e.Properties.ContainsKey("RequestMethod") &&
-                 e.Properties.ContainsKey("RequestPath"));
+        var logEvent = await WaitForRequestEventAsync(sink);
 
         Assert.Equal(LogEventLevel.Error, logEvent.Level);
+        Assert.Equal(500, ((ScalarValue)logEvent.Properties["StatusCode"]).Value);
         Assert.Equal(
             "/test-failure",
             ((ScalarValue)logEvent.Properties["RequestPath"]).Value);
@@ -84,29 +76,79 @@ public class SerilogRequestLoggingTests
         Assert.True(logEvent.Properties.ContainsKey("TraceId"));
     }
 
+    [Fact]
+    public async Task RequestLogging_HandledClientError_DoesNotAttachException()
+    {
+        var sink = new CollectingSink();
+
+        await using var app = CreateApp(
+            sink,
+            exceptionStatusCode: StatusCodes.Status400BadRequest);
+
+        app.Run(_ => throw new ArgumentException("Invalid input."));
+
+        await app.StartAsync();
+
+        using var client = app.GetTestClient();
+        using var response = await client.GetAsync("/bad-request");
+
+        Assert.Equal(400, (int)response.StatusCode);
+
+        var logEvent = await WaitForRequestEventAsync(sink);
+
+        Assert.Equal(LogEventLevel.Information, logEvent.Level);
+        Assert.Null(logEvent.Exception);
+    }
+
+    // The test client can receive the response before the request logging
+    // middleware writes its completion event.
+    private static async Task<LogEvent> WaitForRequestEventAsync(
+        CollectingSink sink)
+    {
+        static bool IsRequestEvent(LogEvent e) =>
+            e.Properties.ContainsKey("RequestMethod") &&
+            e.Properties.ContainsKey("RequestPath");
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+
+        while (!sink.Events.Any(IsRequestEvent) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        return Assert.Single(sink.Events, IsRequestEvent);
+    }
+
+    // Mirrors the production pipeline order: request logging first, then the
+    // exception handler that converts exceptions into HTTP responses.
     private static WebApplication CreateApp(
         CollectingSink sink,
-        Func<
-            Microsoft.AspNetCore.Http.HttpContext,
-            double,
-            Exception?,
-            LogEventLevel> getLevel)
+        int exceptionStatusCode = StatusCodes.Status500InternalServerError)
     {
+        // A dedicated logger avoids the shared static Log.Logger, which other
+        // tests running in parallel also replace.
+        var logger = new LoggerConfiguration()
+            .MinimumLevel.Verbose()
+            .WriteTo.Sink(sink)
+            .CreateLogger();
+
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
-        builder.Host.UseSerilog((_, loggerConfiguration) =>
-            loggerConfiguration
-                .MinimumLevel.Verbose()
-                .WriteTo.Sink(sink));
+        builder.Host.UseSerilog(logger, dispose: true);
+        builder.Services.AddProblemDetails();
 
         var app = builder.Build();
 
         app.UseSerilogRequestLogging(options =>
         {
-            options.GetLevel = getLevel;
-            options.EnrichDiagnosticContext = (diagnosticContext, context) =>
-                diagnosticContext.Set("TraceId", context.TraceIdentifier);
+            RequestLoggingConfiguration.Configure(options);
+            options.Logger = logger;
         });
+        app.UseExceptionHandler(handler => handler.Run(context =>
+        {
+            context.Response.StatusCode = exceptionStatusCode;
+            return Task.CompletedTask;
+        }));
 
         return app;
     }

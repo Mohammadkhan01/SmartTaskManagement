@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build, unit, architecture, integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          # CI-ONLY throwaway SA password for an ephemeral container that is
+          # destroyed after the job. Prefer the CI_MSSQL_SA_PASSWORD repository
+          # secret; the fallback is never used outside this service container.
+          MSSQL_SA_PASSWORD: ${{ secrets.CI_MSSQL_SA_PASSWORD || 'CiOnly_Throwaway_Passw0rd!' }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P ${MSSQL_SA_PASSWORD} -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+          --health-start-period 20s
+
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      CI_MSSQL_SA_PASSWORD: ${{ secrets.CI_MSSQL_SA_PASSWORD || 'CiOnly_Throwaway_Passw0rd!' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install EF Core CLI
+        run: dotnet tool install --global dotnet-ef --version "10.0.*"
+
+      - name: Restore
+        run: dotnet restore SmartTaskManagement.sln
+
+      - name: Build
+        run: dotnet build SmartTaskManagement.sln --configuration Release --no-restore -nodeReuse:false
+
+      - name: Unit tests
+        run: >-
+          dotnet test tests/SmartTask.UnitTests
+          --configuration Release --no-build -nodeReuse:false
+          --logger trx --results-directory TestResults/unit
+
+      - name: Architecture tests
+        run: >-
+          dotnet test tests/SmartTask.ArchitectureTests
+          --configuration Release --no-build -nodeReuse:false
+          --logger trx --results-directory TestResults/architecture
+
+      - name: Integration tests (SQL Server service container)
+        run: |
+          export SMARTTASK_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SmartTaskTestDb;User Id=sa;Password=${CI_MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=True"
+          # The API composition root reads these before test overrides apply;
+          # the values are throwaway CI-only test settings.
+          export ConnectionStrings__DefaultConnection="$SMARTTASK_TEST_CONNECTION_STRING"
+          export Jwt__Issuer="SmartTaskIntegrationTests"
+          export Jwt__Audience="SmartTaskIntegrationTests"
+          export Jwt__SigningKey="CiOnlyIntegrationTestSigningKey-NotASecret-32+"
+          bash scripts/run-integration-tests.sh \
+            --configuration Release --no-build \
+            --logger trx --results-directory TestResults/integration
+
+      - name: Publish API
+        run: >-
+          dotnet publish src/SmartTask.API
+          --configuration Release --no-build
+          --output artifacts/api
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults/
+          if-no-files-found: warn
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smarttask-api
+          path: artifacts/api/
+          if-no-files-found: error
+
+  frontend:
+    name: Frontend (test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npx ng test --watch=false
+
+      - name: Production build
+        run: npx ng build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smarttask-frontend
+          path: frontend/dist/frontend/
+          if-no-files-found: error

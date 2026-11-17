@@ -215,6 +215,11 @@ public sealed class DashboardHttpIntegrationTests
                 myDashboard.RecentTasks,
                 task => task.Title == "Soft deleted task");
 
+            Assert.NotNull(myDashboard.ProjectTotals);
+            Assert.Equal(1, myDashboard.ProjectTotals.TotalProjects);
+            Assert.Equal(1, myDashboard.ProjectTotals.PlanningProjects);
+            Assert.Equal(0, myDashboard.ProjectTotals.ActiveProjects);
+
             // 1a. Personal task statistics include status, priority and upcoming aggregates.
             var statisticsResponse = await client.GetAsync(
                 "/api/v1/dashboard/task-statistics");
@@ -285,6 +290,18 @@ public sealed class DashboardHttpIntegrationTests
             Assert.Equal(
                 "Assigned upcoming todo task",
                 projectDashboard.RecentTasks[0].Title);
+            Assert.Null(projectDashboard.ProjectTotals);
+
+            // 2a. Without membership, project totals are empty.
+            AuthenticateAs(client, outsiderId);
+
+            var outsiderSummary = await client.GetFromJsonAsync<DashboardSummaryResponse>(
+                "/api/v1/dashboard/summary");
+
+            Assert.NotNull(outsiderSummary?.ProjectTotals);
+            Assert.Equal(0, outsiderSummary.ProjectTotals.TotalProjects);
+
+            AuthenticateAs(client, memberId);
 
             // 3. A regular member cannot view workload reporting.
             var memberWorkloadResponse = await client.GetAsync(

@@ -231,36 +231,36 @@ namespace SmartTask.DAL.Persistence.Migrations
 
             modelBuilder.Entity("SmartTask.Domain.Entities.AuditLog", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("Details")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("EntityId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                    b.Property<string>("EntityType")
+                    b.Property<string>("EntityName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(45)");
 
-                    b.Property<DateTime?>("UpdatedAtUtc")
+                    b.Property<DateTime>("TimestampUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("UserId")
@@ -269,11 +269,9 @@ namespace SmartTask.DAL.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAtUtc");
+                    b.HasIndex("EntityName", "EntityId");
 
-                    b.HasIndex("EntityType", "EntityId");
-
-                    b.HasIndex("UserId", "CreatedAtUtc");
+                    b.HasIndex("UserId", "TimestampUtc");
 
                     b.ToTable("AuditLogs", (string)null);
                 });
@@ -459,7 +457,7 @@ namespace SmartTask.DAL.Persistence.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "ExpiresAtUtc");
 
                     b.ToTable("RefreshTokens", (string)null);
                 });
@@ -596,8 +594,8 @@ namespace SmartTask.DAL.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<DateTime?>("DueDateUtc")
                         .HasColumnType("datetime2");
@@ -634,13 +632,18 @@ namespace SmartTask.DAL.Persistence.Migrations
 
                     b.HasIndex("DueDateUtc");
 
-                    b.HasIndex("Priority");
-
                     b.HasIndex("AssignedToUserId", "Status");
+
+                    b.HasIndex("ProjectId", "Priority");
 
                     b.HasIndex("ProjectId", "Status");
 
-                    b.ToTable("Tasks", (string)null);
+                    b.ToTable("Tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Tasks_Priority", "[Priority] IN (1, 2, 3, 4)");
+
+                            t.HasCheckConstraint("CK_Tasks_Status", "[Status] IN (1, 2, 3, 4)");
+                        });
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

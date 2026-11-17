@@ -26,9 +26,18 @@ export interface CreateProjectRequest {
   description: string | null;
 }
 
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  [ProjectStatus.Planning]: 'Planning',
+  [ProjectStatus.Active]: 'Active',
+  [ProjectStatus.Completed]: 'Completed',
+  [ProjectStatus.OnHold]: 'On hold',
+  [ProjectStatus.Archived]: 'Archived'
+};
+
 export interface UpdateProjectRequest {
   name: string;
   description: string | null;
+  status: ProjectStatus;
   rowVersion: string;
 }
 

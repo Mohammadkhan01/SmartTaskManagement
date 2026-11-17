@@ -17,6 +17,7 @@ const API = `${API_BASE_URL}/auth`;
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionStore);
+  private refreshInFlight: Promise<boolean> | null = null;
 
   async login(request: LoginRequest): Promise<void> {
     await this.loadCsrfToken();
@@ -36,6 +37,14 @@ export class AuthService {
       })
     );
     this.applySession(response);
+  }
+
+  /** Shares one refresh request between all callers that hit a 401 concurrently. */
+  refreshSession(): Promise<boolean> {
+    this.refreshInFlight ??= this.restoreSession().finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
   }
 
   async restoreSession(): Promise<boolean> {

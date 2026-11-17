@@ -3,11 +3,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartTask.BLL.DTOs.Admin;
 using SmartTask.BLL.Interfaces.Services;
+using SmartTask.Common.Constants;
 
 namespace SmartTask.API.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = RoleNames.Admin)]
 [Route("api/v1/admin/users")]
 public sealed class AdminUsersController : ControllerBase
 {

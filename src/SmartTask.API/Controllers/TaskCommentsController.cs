@@ -17,7 +17,7 @@ public sealed class TaskCommentsController : ControllerBase
         _commentService = commentService;
     }
 
-    [HttpGet("api/tasks/{taskId:guid}/comments")]
+    [HttpGet("api/v1/tasks/{taskId:guid}/comments")]
     [ProducesResponseType(typeof(IReadOnlyList<TaskCommentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -41,7 +41,7 @@ public sealed class TaskCommentsController : ControllerBase
         return Ok(comments);
     }
 
-    [HttpPost("api/tasks/{taskId:guid}/comments")]
+    [HttpPost("api/v1/tasks/{taskId:guid}/comments")]
     [ProducesResponseType(typeof(TaskCommentResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -68,7 +68,7 @@ public sealed class TaskCommentsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, comment);
     }
 
-    [HttpPut("api/task-comments/{commentId:guid}")]
+    [HttpPut("api/v1/task-comments/{commentId:guid}")]
     [ProducesResponseType(typeof(TaskCommentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -96,7 +96,7 @@ public sealed class TaskCommentsController : ControllerBase
         return Ok(comment);
     }
 
-    [HttpDelete("api/task-comments/{commentId:guid}")]
+    [HttpDelete("api/v1/task-comments/{commentId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

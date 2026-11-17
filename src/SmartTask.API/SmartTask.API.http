@@ -1,6 +1,45 @@
-@SmartTask.API_HostAddress = http://localhost:5018
+@host = https://localhost:7251
 
-GET {{SmartTask.API_HostAddress}}/weatherforecast/
+# Liveness and database readiness.
+GET {{host}}/health
+
+###
+
+# Issues the antiforgery cookie and returns { "requestToken": "..." }.
+# @name csrf
+GET {{host}}/api/v1/auth/csrf
 Accept: application/json
+
+###
+
+# Replace the placeholder credentials locally; do not commit real values.
+# @name login
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+Accept: application/json
+X-CSRF-TOKEN: {{csrf.response.body.$.requestToken}}
+
+{
+  "email": "user@example.com",
+  "password": "<password>"
+}
+
+###
+
+GET {{host}}/api/v1/auth/me
+Accept: application/json
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+###
+
+GET {{host}}/api/v1/projects?pageNumber=1&pageSize=10
+Accept: application/json
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+###
+
+GET {{host}}/api/v1/dashboard/summary
+Accept: application/json
+Authorization: Bearer {{login.response.body.$.accessToken}}
 
 ###

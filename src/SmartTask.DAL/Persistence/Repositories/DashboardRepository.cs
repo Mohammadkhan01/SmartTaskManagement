@@ -4,6 +4,7 @@ using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.DAL.Persistence;
 using SmartTask.Domain.Entities;
 using SmartTask.Domain.Enums;
+using SmartTask.Common.Constants;
 using TaskStatus = SmartTask.Domain.Enums.TaskStatus;
 
 namespace SmartTask.DAL.Persistence.Repositories;
@@ -209,6 +210,117 @@ public sealed class DashboardRepository : IDashboardRepository
             .OrderByDescending(item => item.TotalTasks)
             .ThenBy(item => item.DisplayName)
             .ToList();
+    }
+
+    public async Task<DashboardProjectTotalsResponse> GetMemberProjectTotalsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var projects = _context.Projects
+            .AsNoTracking()
+            .Where(p => _context.ProjectMembers.Any(pm =>
+                pm.ProjectId == p.Id &&
+                pm.UserId == userId));
+
+        return await BuildProjectTotalsAsync(projects, cancellationToken);
+    }
+
+    public async Task<AdminDashboardResponse> GetAdminDashboardAsync(
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var projectTotals = await BuildProjectTotalsAsync(
+            _context.Projects.AsNoTracking(),
+            cancellationToken);
+
+        var taskAggregate = await _context.Tasks
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalTasks = group.Count(),
+                ToDoTasks = group.Count(t => t.Status == TaskStatus.ToDo),
+                InProgressTasks = group.Count(t => t.Status == TaskStatus.InProgress),
+                CompletedTasks = group.Count(t => t.Status == TaskStatus.Completed),
+                CancelledTasks = group.Count(t => t.Status == TaskStatus.Cancelled),
+                OverdueTasks = group.Count(t =>
+                    t.DueDateUtc.HasValue &&
+                    t.DueDateUtc.Value < nowUtc &&
+                    t.Status != TaskStatus.Completed &&
+                    t.Status != TaskStatus.Cancelled)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var userAggregate = await _context.Users
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                TotalUsers = group.Count(),
+                ActiveUsers = group.Count(u => u.IsActive)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var usersByRole = await (
+            from userRole in _context.UserRoles.AsNoTracking()
+            join role in _context.Roles.AsNoTracking()
+                on userRole.RoleId equals role.Id
+            group userRole by role.Name into roleGroup
+            select new
+            {
+                RoleName = roleGroup.Key,
+                UserCount = roleGroup.Count()
+            })
+            .ToDictionaryAsync(
+                item => item.RoleName ?? string.Empty,
+                item => item.UserCount,
+                StringComparer.OrdinalIgnoreCase,
+                cancellationToken);
+
+        var totalTasks = taskAggregate?.TotalTasks ?? 0;
+        var completedTasks = taskAggregate?.CompletedTasks ?? 0;
+        var totalUsers = userAggregate?.TotalUsers ?? 0;
+        var activeUsers = userAggregate?.ActiveUsers ?? 0;
+
+        return new AdminDashboardResponse
+        {
+            Projects = projectTotals,
+            TotalTasks = totalTasks,
+            ToDoTasks = taskAggregate?.ToDoTasks ?? 0,
+            InProgressTasks = taskAggregate?.InProgressTasks ?? 0,
+            CompletedTasks = completedTasks,
+            CancelledTasks = taskAggregate?.CancelledTasks ?? 0,
+            OverdueTasks = taskAggregate?.OverdueTasks ?? 0,
+            CompletionPercentage = totalTasks == 0
+                ? 0
+                : Math.Round(completedTasks * 100m / totalTasks, 2),
+            TotalUsers = totalUsers,
+            ActiveUsers = activeUsers,
+            InactiveUsers = totalUsers - activeUsers,
+            AdminUsers = usersByRole.GetValueOrDefault(RoleNames.Admin),
+            ProjectManagerUsers = usersByRole.GetValueOrDefault(RoleNames.ProjectManager),
+            TeamMemberUsers = usersByRole.GetValueOrDefault(RoleNames.TeamMember)
+        };
+    }
+
+    private static async Task<DashboardProjectTotalsResponse> BuildProjectTotalsAsync(
+        IQueryable<Project> projects,
+        CancellationToken cancellationToken)
+    {
+        var totals = await projects
+            .GroupBy(_ => 1)
+            .Select(group => new DashboardProjectTotalsResponse
+            {
+                TotalProjects = group.Count(),
+                PlanningProjects = group.Count(p => p.Status == ProjectStatus.Planning),
+                ActiveProjects = group.Count(p => p.Status == ProjectStatus.Active),
+                CompletedProjects = group.Count(p => p.Status == ProjectStatus.Completed),
+                OnHoldProjects = group.Count(p => p.Status == ProjectStatus.OnHold),
+                ArchivedProjects = group.Count(p => p.Status == ProjectStatus.Archived)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return totals ?? new DashboardProjectTotalsResponse();
     }
 
     private async Task<DashboardSummaryResponse> BuildSummaryAsync(
