@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { describeHttpError } from '../../core/api/api-error';
@@ -16,6 +16,7 @@ import { SessionStore } from '../../core/auth/session-store';
 @Component({
   selector: 'app-admin-users',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="page">
       <section class="heading">

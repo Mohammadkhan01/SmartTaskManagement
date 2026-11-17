@@ -1,71 +1,27 @@
-import { API_BASE_URL } from '../../core/api/api.config';
 import { DatePipe } from '@angular/common';
-import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { SessionStore } from '../../core/auth/session-store';
-
-interface DashboardTaskItem {
-  id: string;
-  projectId: string;
-  title: string;
-  status: number;
-  priority: number;
-  dueDateUtc: string | null;
-}
-
-interface DashboardProjectTotals {
-  totalProjects: number;
-  planningProjects: number;
-  activeProjects: number;
-  completedProjects: number;
-  onHoldProjects: number;
-  archivedProjects: number;
-}
-
-interface DashboardSummary {
-  totalTasks: number;
-  toDoTasks: number;
-  inProgressTasks: number;
-  completedTasks: number;
-  cancelledTasks: number;
-  overdueTasks: number;
-  dueTodayTasks: number;
-  completionPercentage: number;
-  recentTasks: DashboardTaskItem[];
-  projectTotals?: DashboardProjectTotals | null;
-}
-
-interface AdminDashboard {
-  projects: DashboardProjectTotals;
-  totalTasks: number;
-  toDoTasks: number;
-  inProgressTasks: number;
-  completedTasks: number;
-  cancelledTasks: number;
-  overdueTasks: number;
-  completionPercentage: number;
-  totalUsers: number;
-  activeUsers: number;
-  inactiveUsers: number;
-  adminUsers: number;
-  projectManagerUsers: number;
-  teamMemberUsers: number;
-}
-
-interface DashboardTaskStatistics {
-  pendingTasks: number;
-  lowPriorityTasks: number;
-  mediumPriorityTasks: number;
-  highPriorityTasks: number;
-  criticalPriorityTasks: number;
-  upcomingTasks: DashboardTaskItem[];
-}
+import {
+  AdminDashboard,
+  DashboardProjectTotals,
+  DashboardSummary,
+  DashboardTaskStatistics
+} from '../../core/dashboard/dashboard.models';
+import { DashboardService } from '../../core/dashboard/dashboard.service';
+import {
+  TASK_PRIORITY_LABELS,
+  TASK_STATUS_LABELS,
+  TaskPriority,
+  TaskStatus
+} from '../../core/tasks/task.models';
+import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
   imports: [UtcDatePipe, RouterLink],
   template: `
@@ -289,7 +245,8 @@ interface DashboardTaskStatistics {
   `]
 })
 export class DashboardComponent {
-  private readonly http = inject(HttpClient);
+  private readonly dashboardService = inject(DashboardService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly session = inject(SessionStore);
 
   readonly summary = signal<DashboardSummary | null>(null);
@@ -305,7 +262,7 @@ export class DashboardComponent {
   load(): void {
     this.loading.set(true);
     this.error.set('');
-    this.http.get<DashboardSummary>(`${API_BASE_URL}/dashboard/summary`).subscribe({
+    this.dashboardService.getSummary().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: result => {
         this.summary.set(result);
         this.loading.set(false);
@@ -317,14 +274,14 @@ export class DashboardComponent {
     });
 
     // Priority and upcoming-task data are supplementary; the page still renders without them.
-    this.http.get<DashboardTaskStatistics>(`${API_BASE_URL}/dashboard/task-statistics`).subscribe({
+    this.dashboardService.getTaskStatistics().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: result => this.statistics.set(result),
       error: () => this.statistics.set(null)
     });
 
     // The API enforces the Admin role; the session check only avoids a pointless 403.
     if (this.session.isAdmin()) {
-      this.http.get<AdminDashboard>(`${API_BASE_URL}/admin/dashboard`).subscribe({
+      this.dashboardService.getAdminDashboard().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: result => this.adminDashboard.set(result),
         error: () => this.adminDashboard.set(null)
       });
@@ -375,11 +332,11 @@ export class DashboardComponent {
     return max === 0 ? 0 : Math.round((count / max) * 100);
   }
 
-  statusLabel(value: number): string {
-    return ({ 1: 'To do', 2: 'In progress', 3: 'Completed', 4: 'Cancelled' } as Record<number, string>)[value] ?? 'Unknown';
+  statusLabel(value: TaskStatus): string {
+    return TASK_STATUS_LABELS[value] ?? 'Unknown';
   }
 
-  priorityLabel(value: number): string {
-    return ({ 1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical' } as Record<number, string>)[value] ?? 'Unknown';
+  priorityLabel(value: TaskPriority): string {
+    return TASK_PRIORITY_LABELS[value] ?? 'Unknown';
   }
 }

@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
 import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { validationMessage } from '../../core/api/api-error';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -18,6 +19,7 @@ import { ProjectService } from '../../core/projects/project.service';
 @Component({
   selector: 'app-project-details',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
   imports: [UtcDatePipe, RouterLink, ReactiveFormsModule],
   template: `
@@ -184,6 +186,7 @@ export class ProjectDetailsComponent {
   private readonly router = inject(Router);
   private readonly service = inject(ProjectService);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly project = signal<Project | null>(null);
   readonly loading = signal(true);
@@ -233,7 +236,7 @@ export class ProjectDetailsComponent {
     this.loading.set(true);
     this.error.set('');
 
-    this.service.getProject(this.projectId).subscribe({
+    this.service.getProject(this.projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: result => {
         this.project.set(result);
         this.loading.set(false);
@@ -259,7 +262,7 @@ export class ProjectDetailsComponent {
     this.memberError.set('');
     this.membersChecked.set(false);
 
-    this.service.getMembers(this.projectId).subscribe({
+    this.service.getMembers(this.projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: result => {
         this.members.set(result);
         this.membersAllowed.set(true);
@@ -316,7 +319,7 @@ export class ProjectDetailsComponent {
     this.saving.set(true);
     this.saveError.set('');
 
-    this.service.updateProject(this.projectId, request).subscribe({
+    this.service.updateProject(this.projectId, request).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: updated => {
         this.project.set(updated);
         this.editing.set(false);
@@ -342,7 +345,7 @@ export class ProjectDetailsComponent {
     if (!window.confirm('Delete this project? This action cannot be undone.')) return;
 
     this.deleting.set(true);
-    this.service.deleteProject(this.projectId).subscribe({
+    this.service.deleteProject(this.projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.router.navigate(['/projects']),
       error: (error: unknown) => {
         this.deleting.set(false);
@@ -364,7 +367,7 @@ export class ProjectDetailsComponent {
     this.addingMember.set(true);
     this.memberError.set('');
 
-    this.service.addMember(this.projectId, { userId }).subscribe({
+    this.service.addMember(this.projectId, { userId }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: member => {
         this.members.update(current => [...current, member]);
         this.memberForm.reset();
@@ -384,7 +387,7 @@ export class ProjectDetailsComponent {
     this.removingUserId.set(member.userId);
     this.memberError.set('');
 
-    this.service.removeMember(this.projectId, member.userId).subscribe({
+    this.service.removeMember(this.projectId, member.userId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
         this.members.update(current => current.filter(item => item.userId !== member.userId));
         this.removingUserId.set('');

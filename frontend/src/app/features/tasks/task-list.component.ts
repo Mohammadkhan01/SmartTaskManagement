@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
@@ -28,6 +28,7 @@ import { TaskService } from '../../core/tasks/task.service';
 @Component({
   selector: 'app-task-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
   imports: [UtcDatePipe, RouterLink],
   template: `

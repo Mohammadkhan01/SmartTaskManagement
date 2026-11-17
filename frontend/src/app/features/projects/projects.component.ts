@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -18,6 +18,7 @@ import { ProjectService } from '../../core/projects/project.service';
 @Component({
   selector: 'app-projects',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
   imports: [UtcDatePipe, ReactiveFormsModule],
   template: `

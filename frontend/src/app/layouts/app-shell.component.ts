@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { SessionStore } from '../core/auth/session-store';
@@ -7,6 +7,7 @@ import { AppNoticeStore } from '../core/services/app-notice.store';
 @Component({
   selector: 'app-shell',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <div class="shell">
