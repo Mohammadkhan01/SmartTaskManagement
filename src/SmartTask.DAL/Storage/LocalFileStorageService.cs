@@ -23,7 +23,6 @@ public class LocalFileStorageService : IFileStorageService
         Directory.CreateDirectory(_rootPath);
     }
 
-
     public async Task SaveAsync(
         Stream fileStream,
         string storedFileName,
@@ -71,7 +70,6 @@ public class LocalFileStorageService : IFileStorageService
             throw;
         }
     }
-
 
     public Task<Stream?> OpenReadAsync(
         string storedFileName,

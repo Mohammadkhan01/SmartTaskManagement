@@ -12,7 +12,6 @@ using SmartTask.DAL.Storage;
 using SmartTask.BLL.Configuration;
 using SmartTask.DAL.Ai;
 
-
 namespace SmartTask.DAL;
 
 public static class DependencyInjection
@@ -81,7 +80,7 @@ public static class DependencyInjection
         services.AddHttpClient<GitHubModelsTextProvider>();
         services.AddTransient<IAiTextProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<GitHubModelsTextProvider>());
-        
+
         return services;
     }
 }

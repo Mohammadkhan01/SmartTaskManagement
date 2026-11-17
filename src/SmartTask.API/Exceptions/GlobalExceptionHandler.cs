@@ -1,9 +1,9 @@
-
+using System.Text.Json;
 using FluentValidation;
-using SmartTask.BLL.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SmartTask.BLL.Exceptions;
 using SmartTask.Common.Exceptions;
 
 namespace SmartTask.API.Exceptions;
@@ -23,26 +23,27 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         CancellationToken cancellationToken)
     {
         // Do not attempt to modify a response that has already started.
-if (httpContext.Response.HasStarted)
-{
-    _logger.LogWarning(
-        "Cannot handle exception because the response has already started. TraceId: {TraceId}",
-        httpContext.TraceIdentifier);
+        if (httpContext.Response.HasStarted)
+        {
+            _logger.LogWarning(
+                "Cannot handle exception because the response has already started. TraceId: {TraceId}",
+                httpContext.TraceIdentifier);
 
-    return false;
-}
+            return false;
+        }
 
-// A disconnected client may cancel the request.
-// Do not generate an error response or log it as an application failure.
-if (exception is OperationCanceledException &&
-    httpContext.RequestAborted.IsCancellationRequested)
-{
-    _logger.LogDebug(
-        "Request was cancelled by the client. TraceId: {TraceId}",
-        httpContext.TraceIdentifier);
+        // A disconnected client may cancel the request.
+        // Do not generate an error response or log it as an application failure.
+        if (exception is OperationCanceledException &&
+            httpContext.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogDebug(
+                "Request was cancelled by the client. TraceId: {TraceId}",
+                httpContext.TraceIdentifier);
 
-    return true;
-}
+            return true;
+        }
+
         var problem = exception switch
         {
             ValidationException validationException =>
@@ -140,7 +141,7 @@ if (exception is OperationCanceledException &&
 
         problem.Extensions["traceId"] = httpContext.TraceIdentifier;
 
-        await System.Text.Json.JsonSerializer.SerializeAsync(
+        await JsonSerializer.SerializeAsync(
             httpContext.Response.Body,
             problem,
             problem.GetType(),
