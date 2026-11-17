@@ -39,7 +39,7 @@ Verification run used for this report (2026-11-17):
 
 | ID | Requirement | Implementation | Verification | Status |
 |---|---|---|---|---|
-| REQ-001 | N-Layer architecture | `src/SmartTask.API`, `.BLL`, `.DAL`, `.Domain`, `.Common`; `docs/architecture.md` | `AT/UnitTest1.cs` (project reference rules), `AT/BusinessServiceBoundaryTests.cs`, `AT/ControllerBoundaryTests.cs` | Done |
+| REQ-001 | N-Layer architecture | `src/SmartTask.API`, `.BLL`, `.DAL`, `.Domain`, `.Common`; `docs/architecture.md` | `AT/LayerDependencyTests.cs` (project reference rules), `AT/BusinessServiceBoundaryTests.cs`, `AT/ControllerBoundaryTests.cs` | Done |
 | REQ-002 | Registration | `BLL/Services/Auth/AuthService.cs` (`RegisterAsync`), `Validators/Auth/RegisterRequestValidator.cs`, `API/Controllers/AuthController.cs` | `UT/AuthServiceTests.cs` (`RegisterAsync_*`); `fe/features/auth/login.component.spec.ts` | Done |
 | REQ-003 | Login | `AuthService.LoginAsync`, `DAL/Identity/UserAccountRepository.cs` (lockout) | `UT/AuthServiceTests.cs`; `IT/UserAccountRepositoryLockoutTests.cs` (5 failures lock account); `IT/AuthRateLimitHttpIntegrationTests.cs` | Done |
 | REQ-004 | Logout | `AuthService.LogoutAsync` revokes refresh token; `AuthController` clears `smarttask.refresh` cookie, returns 204 | `IT/AuthSecurityHttpIntegrationTests.cs` (`Refresh_AfterLogout_RejectsRevokedToken`); `UT/AuthServiceTests.cs` | Done |
@@ -47,11 +47,11 @@ Verification run used for this report (2026-11-17):
 | REQ-006 | Refresh tokens | `AuthService` (SHA-256 `HashToken`, rotation, family revocation on reuse), `RefreshTokenConfiguration.cs` (unique hash index), HttpOnly cookie + CSRF header | `IT/AuthSecurityHttpIntegrationTests.cs` (`Refresh_WithRotatedToken_Returns401AndRevokesTokenFamily`); `UT/AuthServiceTests.cs` | Done |
 | REQ-007 | Three user roles | `Common/Constants/RoleNames.cs`, `DAL/Identity/IdentityRoleSeeder.cs`; project roles `Domain/Enums/ProjectMemberRole.cs` | `IT/AdminDashboardHttpIntegrationTests.cs` (Admin vs Team Member); `IT/TaskHttpIntegrationTests.cs` (Project Manager); `DatabaseConstraintTests` (`CK_ProjectMembers_ProjectRole`) | Done |
 | REQ-008 | Role authorization | `[Authorize(Roles = RoleNames.Admin)]` on `AdminUsersController`, `AdminDashboardController`; `fe/core/guards/admin.guard.ts` | `IT/AdminDashboardHttpIntegrationTests.cs` (401/403/200 for dashboard **and** `/api/v1/admin/users` list, status, role); `UT/AdminUserServiceTests.cs`; `fe/core/guards/guards.spec.ts` | Done |
-| REQ-009 | Resource authorization | Membership/role checks in `ProjectService`, `TaskService`, `TaskCommentService`, `TaskAttachmentService`; membership-scoped queries in repositories | `IT/TaskHttpIntegrationTests.cs` (`TaskEndpoints_EnforceProjectMembershipAndTaskPermissions`), `IT/ProjectListHttpIntegrationTest.cs` (membership scope), `IT/TaskAttachmentHttpIntegrationTests.cs`, `IT/TaskCommentActivityHttpTests.cs`; `UT/ProjectServiceTests.cs` (`DeleteAsync_ShouldRejectNonOwner` etc.) | Done |
-| REQ-010 | Project CRUD | `BLL/Services/Projects/ProjectService.cs`, `API/Controllers/ProjectsController.cs`, soft delete | `UT/ProjectServiceTests.cs` (create/update/delete/soft delete/audit); `IT/ProjectConcurrencyHttpTests.cs`, `IT/ProjectActivationTaskAssignmentHttpTests.cs`, `IT/ProjectListHttpIntegrationTest.cs` | Done |
-| REQ-011 | Project search | `DAL/Persistence/Repositories/ProjectRepository.cs` (`Where` translated to SQL) | `IT/ProjectListHttpIntegrationTest.cs`; `UT/ProjectRepositoryPagedTests.cs` | Done |
-| REQ-012 | Project sorting | Whitelist in `ProjectListQueryRequestValidator.cs` + switch in `ProjectRepository` | `UT/ProjectListQueryRequestValidatorTests.cs`; `IT/ProjectListHttpIntegrationTest.cs` | Done |
-| REQ-013 | Project pagination | `Skip/Take` in `ProjectRepository`; `Common/Utilities/Pagination.cs`, `Common/Responses/PagedResponse.cs` | `UT/PaginationTests.cs`, `UT/ProjectRepositoryPagedTests.cs`; `IT/ProjectListHttpIntegrationTest.cs` (incl. invalid page size → 400) | Done |
+| REQ-009 | Resource authorization | Membership/role checks in `ProjectService`, `TaskService`, `TaskCommentService`, `TaskAttachmentService`; membership-scoped queries in repositories | `IT/TaskHttpIntegrationTests.cs` (`TaskEndpoints_EnforceProjectMembershipAndTaskPermissions`), `IT/ProjectListHttpIntegrationTests.cs` (membership scope), `IT/TaskAttachmentHttpIntegrationTests.cs`, `IT/TaskCommentActivityHttpTests.cs`; `UT/ProjectServiceTests.cs` (`DeleteAsync_ShouldRejectNonOwner` etc.) | Done |
+| REQ-010 | Project CRUD | `BLL/Services/Projects/ProjectService.cs`, `API/Controllers/ProjectsController.cs`, soft delete | `UT/ProjectServiceTests.cs` (create/update/delete/soft delete/audit); `IT/ProjectConcurrencyHttpTests.cs`, `IT/ProjectActivationTaskAssignmentHttpTests.cs`, `IT/ProjectListHttpIntegrationTests.cs` | Done |
+| REQ-011 | Project search | `DAL/Persistence/Repositories/ProjectRepository.cs` (`Where` translated to SQL) | `IT/ProjectListHttpIntegrationTests.cs`; `UT/ProjectRepositoryPagedTests.cs` | Done |
+| REQ-012 | Project sorting | Whitelist in `ProjectListQueryRequestValidator.cs` + switch in `ProjectRepository` | `UT/ProjectListQueryRequestValidatorTests.cs`; `IT/ProjectListHttpIntegrationTests.cs` | Done |
+| REQ-013 | Project pagination | `Skip/Take` in `ProjectRepository`; `Common/Utilities/Pagination.cs`, `Common/Responses/PagedResponse.cs` | `UT/PaginationTests.cs`, `UT/ProjectRepositoryPagedTests.cs`; `IT/ProjectListHttpIntegrationTests.cs` (incl. invalid page size → 400) | Done |
 | REQ-014 | Task CRUD | `BLL/Services/Tasks/TaskService.cs`, `API/Controllers/TasksController.cs`, soft delete | `UT/TaskServiceTests.cs`; `IT/TaskHttpIntegrationTests.cs` | Done |
 | REQ-015 | Task assignment | `TaskService` membership validation, `AssignTaskRequestValidator.cs` | `IT/TaskHttpIntegrationTests.cs` (`AssignTask_AsProjectManager_PersistsAssignmentAndNotification`), `IT/ProjectActivationTaskAssignmentHttpTests.cs`; `UT/TaskServiceTests.cs` | Done |
 | REQ-016 | Task status | `Domain/Enums/TaskStatus.cs`, `CK_Tasks_Status`, `UpdateTaskStatusRequestValidator.cs` | `IT/DatabaseConstraintTests.cs` (CHECK rejects invalid values); `UT/TaskServiceTests.cs`; `IT/TaskHttpIntegrationTests.cs` (`PatchTaskStatus_WithStaleRowVersion_Returns409Conflict`) | Done |
@@ -123,7 +123,7 @@ formal approval exists in the repository, so they cannot be claimed as done.
 | JWT validation correct | Done | `AuthSecurityHttpIntegrationTests` (expired, tampered), `JwtConfigurationTests`, `InactiveUserJwtHttpIntegrationTests` |
 | Refresh tokens securely stored | Done | SHA-256 hash only, unique index, HttpOnly/Secure cookie, reuse detection test |
 | Role restrictions work | Done | `AdminDashboardHttpIntegrationTests` (dashboard + admin users 401/403/200) |
-| Resource restrictions work / unauthorized project & task access blocked | Done | `TaskHttpIntegrationTests`, `ProjectListHttpIntegrationTest`, attachment/comment HTTP tests |
+| Resource restrictions work / unauthorized project & task access blocked | Done | `TaskHttpIntegrationTests`, `ProjectListHttpIntegrationTests`, attachment/comment HTTP tests |
 | Task assignment rules enforced | Done | `TaskHttpIntegrationTests`, `ProjectActivationTaskAssignmentHttpTests` |
 | CORS restricted | Done | `CorsHttpIntegrationTests`; startup guard against `*` |
 | Rate limiting configured | Done | `AuthRateLimitHttpIntegrationTests` |
@@ -156,7 +156,7 @@ The handbook does not list these as mandatory audit events.
 
 | Item | Status | Evidence |
 |---|---|---|
-| N-Layer structure implemented | Done | 5 projects; `AT/UnitTest1.cs` |
+| N-Layer structure implemented | Done | 5 projects; `AT/LayerDependencyTests.cs` |
 | Responsibilities clearly separated | Done | `AT/BusinessServiceBoundaryTests.cs`, `AT/ControllerBoundaryTests.cs` |
 | Dependency rules respected / no circular dependencies | Done | Architecture tests (project references form a DAG) |
 | Controllers remain thin | Done | Controllers depend only on `BLL.Interfaces.Services` (architecture test) |
