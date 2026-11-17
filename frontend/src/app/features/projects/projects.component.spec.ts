@@ -87,14 +87,16 @@ describe('ProjectsComponent', () => {
     expect(rows[0].textContent).toContain('First');
     expect(rows[0].textContent).toContain('Jan 10, 2026');
     expect(rows[1].textContent).toContain('On hold');
-    expect(element.querySelector('.pagination')?.textContent).toContain('2 project(s) · Page 1 of 1');
+    const pagination = element.querySelector('.pagination')?.textContent;
+    expect(pagination).toContain('2 projects');
+    expect(pagination).toContain('Page 1 of 1');
   });
 
   it('shows the empty state', () => {
     create();
     expectList().flush(page([]));
     render();
-    expect(element.querySelector('.empty h2')?.textContent).toContain('No projects found');
+    expect(element.querySelector('.empty-state h2')?.textContent).toContain('No projects found');
   });
 
   it('shows an error with retry when loading fails', () => {

@@ -5,7 +5,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { describeHttpError, validationMessage } from '../../core/api/api-error';
 import { AI_DESCRIPTION_MAX_LENGTH, AiService } from '../../core/ai/ai.service';
-import { ProjectMember } from '../../core/projects/project.models';
+import { ProjectMember, ProjectStatus } from '../../core/projects/project.models';
 import { ProjectService } from '../../core/projects/project.service';
 import {
   CreateTaskRequest,
@@ -112,7 +112,13 @@ import { TaskService } from '../../core/tasks/task.service';
                 }
               </div>
             </div>
-            <small class="muted">Assigning a task requires the project to be Active.</small>
+            <small class="muted">
+              @if (canAssign()) {
+                Assigning a task requires the project to be Active.
+              } @else {
+                This project is not Active, so new tasks stay unassigned until the project is activated.
+              }
+            </small>
 
             @if (saveError()) {
               <p class="error" role="alert">{{ saveError() }}</p>
@@ -184,6 +190,8 @@ export class TaskFormComponent {
   readonly saveError = signal('');
   readonly members = signal<ProjectMember[]>([]);
   readonly membersAvailable = signal(false);
+  readonly projectStatus = signal<ProjectStatus | null>(null);
+  readonly canAssign = computed(() => this.projectStatus() === ProjectStatus.Active);
 
   readonly enhancing = signal(false);
   readonly suggestion = signal<string | null>(null);
@@ -281,14 +289,22 @@ export class TaskFormComponent {
       return;
     }
 
+    const selectedAssignee = (value.assignedToUserId || '').trim() || null;
+    let assignedToUserId: string | null = null;
+    if (this.membersAvailable()) {
+      assignedToUserId = this.canAssign()
+        ? selectedAssignee
+        : (this.existing?.assignedToUserId ?? null);
+    } else {
+      assignedToUserId = this.existing?.assignedToUserId ?? null;
+    }
+
     const request: CreateTaskRequest = {
       title,
       description: value.description.trim() || null,
-      priority: value.priority,
+      priority: Number(value.priority) as TaskPriority,
       dueDateUtc: value.dueDate ? toUtcNoon(value.dueDate) : null,
-      assignedToUserId: this.membersAvailable()
-        ? value.assignedToUserId || null
-        : this.existing?.assignedToUserId ?? null
+      assignedToUserId
     };
 
     this.saving.set(true);
@@ -344,6 +360,13 @@ export class TaskFormComponent {
   }
 
   private loadMembers(): void {
+    this.projects.getProject(this.projectId).pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe({
+      next: project => this.applyProjectStatus(project.status),
+      error: () => this.projectStatus.set(null)
+    });
+
     this.projects.getMembers(this.projectId).pipe(
       takeUntilDestroyed(this.destroyRef)
     ).subscribe({
@@ -353,6 +376,21 @@ export class TaskFormComponent {
       },
       error: () => this.membersAvailable.set(false)
     });
+  }
+
+  private applyProjectStatus(status: ProjectStatus): void {
+    this.projectStatus.set(status);
+    const control = this.form.controls.assignedToUserId;
+    if (status === ProjectStatus.Active) {
+      control.enable({ emitEvent: false });
+      return;
+    }
+
+    // Creating against a non-Active project must not send an assignee.
+    if (!this.isEdit) {
+      control.setValue('', { emitEvent: false });
+    }
+    control.disable({ emitEvent: false });
   }
 
   private aiErrorMessage(error: unknown): string {

@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { UtcDatePipe } from '../../shared/pipes/utc-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRender, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -14,63 +14,81 @@ import {
   ProjectStatus
 } from '../../core/projects/project.models';
 import { ProjectService } from '../../core/projects/project.service';
+import { AvatarComponent } from '../../shared/ui/avatar.component';
+import { IconComponent } from '../../shared/ui/icon.component';
+import { PaginationComponent } from '../../shared/ui/pagination.component';
 
 @Component({
   selector: 'app-projects',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
-  imports: [UtcDatePipe, ReactiveFormsModule],
+  imports: [UtcDatePipe, ReactiveFormsModule, AvatarComponent, IconComponent, PaginationComponent],
   template: `
     <main class="page">
-      <section class="heading">
+      <header class="page-header">
         <div>
-          <p class="eyebrow">WORKSPACE</p>
           <h1>Projects</h1>
-          <p class="subtitle">View and manage the projects you belong to.</p>
+          <p class="page-subtitle">View and manage the projects you belong to.</p>
         </div>
         @if (canCreate()) {
-          <button type="button" (click)="toggleCreateForm()">
+          <button type="button" class="btn" [class.btn-primary]="!showCreateForm()" [class.btn-secondary]="showCreateForm()"
+            [attr.aria-expanded]="showCreateForm()" [attr.aria-controls]="showCreateForm() ? 'create-project-panel' : null"
+            (click)="toggleCreateForm()">
+            @if (!showCreateForm()) { <app-icon name="plus" [size]="16" /> }
             {{ showCreateForm() ? 'Cancel' : 'Create project' }}
           </button>
         }
-      </section>
+      </header>
 
       @if (showCreateForm()) {
-        <section class="panel create-panel">
-          <h2>Create a project</h2>
-          <form [formGroup]="createForm" (ngSubmit)="createProject()">
-            <label for="project-name">Project name</label>
-            <input id="project-name" type="text" formControlName="name"
-              maxlength="150" autocomplete="off">
-            @if (createForm.controls.name.touched && createForm.controls.name.invalid) {
-              <p class="field-error">Enter a project name (maximum 150 characters).</p>
-            }
+        <section id="create-project-panel" class="panel create-panel" aria-labelledby="create-project-title">
+          <div class="create-intro">
+            <span class="create-icon"><app-icon name="folder" /></span>
+            <div>
+              <h2 id="create-project-title">Create a project</h2>
+              <p class="panel-meta">Start with a name. Members and tasks can be added once the project exists.</p>
+            </div>
+          </div>
+          <form class="form" [formGroup]="createForm" (ngSubmit)="createProject()">
+            <div class="field">
+              <label for="project-name">Project name</label>
+              <input id="project-name" type="text" formControlName="name" maxlength="150" autocomplete="off"
+                placeholder="e.g. Website relaunch"
+                [attr.aria-invalid]="createForm.controls.name.touched && createForm.controls.name.invalid"
+                [attr.aria-describedby]="createForm.controls.name.touched && createForm.controls.name.invalid ? 'project-name-error' : null">
+              @if (createForm.controls.name.touched && createForm.controls.name.invalid) {
+                <p id="project-name-error" class="field-error">Enter a project name (maximum 150 characters).</p>
+              }
+            </div>
 
-            <label for="project-description">Description</label>
-            <textarea id="project-description" rows="3"
-              formControlName="description" maxlength="2000"></textarea>
+            <div class="field">
+              <label for="project-description">Description <span class="optional">Optional</span></label>
+              <textarea id="project-description" rows="3"
+                formControlName="description" maxlength="2000"></textarea>
+            </div>
 
             @if (createError()) {
-              <p class="error" role="alert">{{ createError() }}</p>
+              <p class="alert error" role="alert">{{ createError() }}</p>
             }
 
-            <div class="form-actions">
-              <button type="submit" [disabled]="creating() || createForm.invalid">
-                {{ creating() ? 'Creating…' : 'Create project' }}
-              </button>
-              <button type="button" class="secondary" (click)="toggleCreateForm()">
+            <div class="form-actions end">
+              <button type="button" class="btn btn-secondary" (click)="toggleCreateForm()">
                 Cancel
+              </button>
+              <button type="submit" class="btn btn-primary" [disabled]="creating() || createForm.invalid">
+                {{ creating() ? 'Creating…' : 'Create project' }}
               </button>
             </div>
           </form>
         </section>
       }
 
-      <section class="panel">
-        <div class="filters">
-          <label class="search">
-            <span>Search projects</span>
+      <section class="panel data-panel" aria-label="Project list">
+        <div class="filters toolbar">
+          <label class="search-field">
+            <span class="sr-only">Search projects</span>
+            <app-icon name="search" [size]="16" />
             <input type="search" placeholder="Search by name or description"
               [value]="searchText()" (input)="onSearch($event)">
           </label>
@@ -97,47 +115,62 @@ import { ProjectService } from '../../core/projects/project.service';
         </div>
 
         @if (loading()) {
-          <p class="message" role="status">Loading projects…</p>
+          <div class="loading-rows" role="status">
+            <span class="sr-only">Loading projects…</span>
+            @for (row of skeletonRows; track row) { <span class="skeleton" aria-hidden="true"></span> }
+          </div>
         } @else if (error()) {
-          <div class="message">
+          <div class="empty-state">
+            <span class="empty-state-icon tone-danger"><app-icon name="alert" /></span>
             <p class="error" role="alert">{{ error() }}</p>
-            <button type="button" class="secondary" (click)="loadProjects()">Try again</button>
+            <button type="button" class="btn btn-secondary" (click)="loadProjects()">
+              <app-icon name="refresh" [size]="16" />
+              Try again
+            </button>
           </div>
         } @else if (result(); as data) {
           @if (data.items.length === 0) {
-            <div class="empty">
+            <div class="empty-state">
+              <span class="empty-state-icon"><app-icon name="folder" /></span>
               <h2>No projects found</h2>
               <p>Try changing your search or status filter.</p>
             </div>
           } @else {
             <div class="table-wrap">
-              <table>
+              <table class="table table-responsive">
                 <thead>
                   <tr>
                     <th scope="col">Project</th>
                     <th scope="col">Status</th>
                     <th scope="col">Created</th>
-                    <th scope="col">Action</th>
+                    <th scope="col" class="col-actions"><span class="sr-only">Action</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (project of data.items; track project.id) {
                     <tr>
                       <td>
-                        <strong>{{ project.name }}</strong>
-                        <span class="description">
-                          {{ project.description || 'No description' }}
-                        </span>
+                        <div class="project-cell">
+                          <app-avatar [name]="project.name" [square]="true" />
+                          <div>
+                            <strong class="cell-title">{{ project.name }}</strong>
+                            <span class="cell-sub description">
+                              {{ project.description || 'No description' }}
+                            </span>
+                          </div>
+                        </div>
                       </td>
-                      <td>
-                        <span class="status" [class]="'status status-' + project.status">
+                      <td data-label="Status">
+                        <span [class]="'pill project-status-' + project.status">
                           {{ statusLabel(project.status) }}
                         </span>
                       </td>
-                      <td>{{ project.createdAtUtc | utcDate:'mediumDate' }}</td>
-                      <td>
-                        <button type="button" class="link-button"
-                          (click)="openProject(project)">View project</button>
+                      <td data-label="Created" class="date-cell">{{ project.createdAtUtc | utcDate:'mediumDate' }}</td>
+                      <td class="col-actions">
+                        <button type="button" class="btn btn-ghost btn-sm" (click)="openProject(project)">
+                          View project
+                          <app-icon name="chevronRight" [size]="16" />
+                        </button>
                       </td>
                     </tr>
                   }
@@ -146,66 +179,25 @@ import { ProjectService } from '../../core/projects/project.service';
             </div>
           }
 
-          <footer class="pagination">
-            <span>
-              {{ data.totalCount }} project(s) · Page {{ data.pageNumber }} of {{ data.totalPages || 1 }}
-            </span>
-            <div>
-              <button type="button" class="secondary" (click)="changePage(data.pageNumber - 1)"
-                [disabled]="!data.hasPreviousPage">Previous</button>
-              <button type="button" class="secondary" (click)="changePage(data.pageNumber + 1)"
-                [disabled]="!data.hasNextPage">Next</button>
-            </div>
-          </footer>
+          <app-pagination [page]="data" noun="project" (pageChange)="changePage($event)" />
         }
       </section>
     </main>
   `,
   styles: [`
-    :host { display:block; min-height:100vh; background:#f4f6fa; }
-    .page { max-width:1180px; margin:auto; padding:24px 28px 48px; }
-    .heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin:10px 0 24px; }
-    h1 { margin:5px 0 6px; font-size:32px; }
-    h2 { margin:0 0 20px; font-size:20px; }
-    .eyebrow { margin:0; color:#64748b; font-size:11px; font-weight:700; letter-spacing:1.3px; }
-    .subtitle { margin:0; color:#64748b; font-size:14px; }
-    button { border:0; border-radius:8px; padding:11px 17px; background:#1d4ed8; color:white; cursor:pointer; }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    .secondary { background:#eef2f7; color:#334155; }
-    .panel { background:white; border:1px solid #e5eaf1; border-radius:12px; padding:22px; }
-    .create-panel { margin-bottom:20px; max-width:680px; }
-    form { display:grid; gap:9px; }
-    label { color:#475569; font-size:13px; font-weight:600; }
-    input, textarea, select { width:100%; border:1px solid #cbd5e1; border-radius:7px; padding:10px 12px; color:#17243b; background:white; }
-    input:focus, textarea:focus, select:focus { outline:2px solid #93c5fd; border-color:#2563eb; }
-    textarea { resize:vertical; }
-    .form-actions { display:flex; gap:10px; margin-top:10px; }
-    .field-error,.error { color:#b91c1c; font-size:13px; }
-    .filters { display:grid; grid-template-columns:minmax(220px,1fr) 180px 180px; gap:16px; margin-bottom:22px; }
-    .filters label { display:grid; gap:7px; }
-    .message { padding:22px 0; color:#64748b; }
-    .empty { text-align:center; padding:42px 16px; color:#64748b; }
-    .empty h2 { color:#17243b; margin-bottom:8px; }
-    .table-wrap { overflow-x:auto; }
-    table { width:100%; border-collapse:collapse; text-align:left; }
-    th { color:#64748b; font-size:12px; font-weight:600; }
-    th,td { padding:15px 12px; border-bottom:1px solid #edf0f4; }
-    td { font-size:13px; }
-    td strong,.description { display:block; }
-    .description { max-width:440px; margin-top:5px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .status { display:inline-block; padding:5px 9px; border-radius:20px; background:#eef2f7; color:#475569; font-size:12px; white-space:nowrap; }
-    .status-2 { background:#dbeafe; color:#1d4ed8; }
-    .status-3 { background:#dcfce7; color:#166534; }
-    .status-4 { background:#fef3c7; color:#92400e; }
-    .status-5 { background:#f1f5f9; color:#64748b; }
-    .link-button { padding:5px 0; background:transparent; color:#1d4ed8; }
-    .pagination { display:flex; justify-content:space-between; align-items:center; gap:16px; padding-top:20px; color:#64748b; font-size:13px; }
-    .pagination div { display:flex; gap:8px; }
-    @media(max-width:720px) {
-      .page { padding:16px; }
-      .heading { align-items:flex-start; flex-direction:column; }
-      .filters { grid-template-columns:1fr; }
-      .pagination { align-items:flex-start; flex-direction:column; }
+    :host { display:block; }
+    .create-panel { max-width:720px; margin-bottom:20px; border-color:#d5daf6; box-shadow:0 1px 0 #d5daf6, 0 8px 24px -16px rgb(59 76 202 / .35); }
+    .create-intro { display:flex; align-items:flex-start; gap:14px; margin-bottom:18px; }
+    .create-icon { display:grid; place-items:center; flex-shrink:0; width:40px; height:40px; border-radius:10px; background:var(--c-primary-soft); color:var(--c-primary); }
+    .optional { margin-left:4px; color:var(--c-faint); font-weight:500; }
+    .project-cell { display:flex; align-items:center; gap:12px; min-width:0; }
+    .project-cell > div { min-width:0; }
+    .date-cell { color:var(--c-muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+    @media (max-width: 720px) {
+      .create-panel { max-width:none; }
+      .project-cell { gap:10px; }
+      .date-cell { white-space:normal; }
     }
   `]
 })
@@ -214,7 +206,10 @@ export class ProjectsComponent {
   private readonly fb = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   readonly session = inject(SessionStore);
+
+  readonly skeletonRows = [1, 2, 3, 4, 5];
 
   readonly result = signal<ProjectListResponse | null>(null);
   readonly loading = signal(false);
@@ -298,6 +293,9 @@ export class ProjectsComponent {
     this.showCreateForm.update(value => !value);
     this.createError.set('');
     this.createForm.reset({ name: '', description: '' });
+    if (this.showCreateForm()) {
+      afterNextRender(() => document.getElementById('project-name')?.focus(), { injector: this.injector });
+    }
   }
 
   createProject(): void {

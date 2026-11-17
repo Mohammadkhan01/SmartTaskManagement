@@ -5,12 +5,21 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { AI_DESCRIPTION_MAX_LENGTH } from '../../core/ai/ai.service';
 import { API_BASE_URL } from '../../core/api/api.config';
-import { ProjectMemberRole } from '../../core/projects/project.models';
+import { Project, ProjectMemberRole, ProjectStatus } from '../../core/projects/project.models';
 import { Task, TaskPriority, TaskStatus } from '../../core/tasks/task.models';
 import { TaskFormComponent } from './task-form.component';
 
 const AI = `${API_BASE_URL}/ai/enhance-task-description`;
 const members = [{ userId: 'u2', displayName: 'Sam', email: 'sam@x', projectRole: ProjectMemberRole.Member }];
+const activeProject: Project = {
+  id: 'p1',
+  name: 'Project One',
+  description: null,
+  status: ProjectStatus.Active,
+  createdByUserId: 'u1',
+  createdAtUtc: '2026-01-01T00:00:00Z',
+  rowVersion: 'rv-p1'
+};
 
 const existing: Task = {
   id: 't1',
@@ -48,13 +57,24 @@ describe('TaskFormComponent', () => {
     render();
   }
 
-  async function openCreate(membersOk = true): Promise<void> {
+  function flushProjectAndMembers(
+    membersOk = true,
+    project: Project = activeProject
+  ): void {
+    http.expectOne(`${API_BASE_URL}/projects/p1`).flush(project);
+    const membersReq = http.expectOne(`${API_BASE_URL}/projects/p1/members`);
+    if (membersOk) membersReq.flush(members);
+    else membersReq.flush(null, { status: 403, statusText: 'Forbidden' });
+  }
+
+  async function openCreate(
+    membersOk = true,
+    project: Project = activeProject
+  ): Promise<void> {
     harness = await RouterTestingHarness.create();
     component = await harness.navigateByUrl('/projects/p1/tasks/new', TaskFormComponent);
     element = harness.routeNativeElement!;
-    const req = http.expectOne(`${API_BASE_URL}/projects/p1/members`);
-    if (membersOk) req.flush(members);
-    else req.flush(null, { status: 403, statusText: 'Forbidden' });
+    flushProjectAndMembers(membersOk, project);
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     render();
   }
@@ -64,7 +84,7 @@ describe('TaskFormComponent', () => {
     component = await harness.navigateByUrl('/tasks/t1/edit', TaskFormComponent);
     element = harness.routeNativeElement!;
     http.expectOne(`${API_BASE_URL}/tasks/t1`).flush(existing);
-    http.expectOne(`${API_BASE_URL}/projects/p1/members`).flush(members);
+    flushProjectAndMembers();
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     render();
   }
@@ -184,6 +204,23 @@ describe('TaskFormComponent', () => {
 
       expect(http.expectOne(`${API_BASE_URL}/projects/p1/tasks`).request.body).toEqual({
         title: 'Minimal',
+        description: null,
+        priority: TaskPriority.Medium,
+        dueDateUtc: null,
+        assignedToUserId: null
+      });
+    });
+
+    it('forces unassigned create payload when the project is not Active', async () => {
+      await openCreate(true, { ...activeProject, status: ProjectStatus.OnHold });
+      expect(element.textContent).toContain('This project is not Active');
+      expect(component.form.controls.assignedToUserId.disabled).toBe(true);
+
+      type('#task-title', 'No assignee yet');
+      element.querySelector('form')!.dispatchEvent(new Event('submit'));
+
+      expect(http.expectOne(`${API_BASE_URL}/projects/p1/tasks`).request.body).toEqual({
+        title: 'No assignee yet',
         description: null,
         priority: TaskPriority.Medium,
         dueDateUtc: null,

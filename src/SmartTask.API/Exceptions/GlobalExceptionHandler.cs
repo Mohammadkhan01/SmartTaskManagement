@@ -153,11 +153,21 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     private static ValidationProblemDetails CreateValidationProblem(
         ValidationException exception)
     {
+        // FluentValidation's string constructor uses an empty PropertyName. ASP.NET's
+        // ValidationProblemDetails drops empty keys, which left clients with errors:{}
+        // and a generic "Some task details are invalid." message.
         var errors = exception.Errors
-            .GroupBy(error => error.PropertyName)
+            .GroupBy(error => string.IsNullOrWhiteSpace(error.PropertyName)
+                ? "request"
+                : error.PropertyName)
             .ToDictionary(
                 group => group.Key,
                 group => group.Select(error => error.ErrorMessage).ToArray());
+
+        if (errors.Count == 0 && !string.IsNullOrWhiteSpace(exception.Message))
+        {
+            errors["request"] = [exception.Message];
+        }
 
         return new ValidationProblemDetails(errors)
         {

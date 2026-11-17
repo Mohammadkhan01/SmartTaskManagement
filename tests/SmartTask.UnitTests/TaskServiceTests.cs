@@ -206,7 +206,7 @@ public class TaskServiceTests
 
         var service = CreateService();
 
-        await Assert.ThrowsAsync<ValidationException>(
+        var exception = await Assert.ThrowsAsync<ValidationException>(
             () => service.CreateAsync(
                 projectId,
                 new CreateTaskRequest
@@ -216,8 +216,74 @@ public class TaskServiceTests
                 },
                 "manager-123"));
 
+        Assert.Contains(
+            exception.Errors,
+            error => error.PropertyName == "AssignedToUserId");
         Assert.Empty(_tasks.AddedTasks);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldTreatEmptyAssigneeAsUnassigned()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddGlobalRole("manager-123", "Project Manager");
+
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Test project",
+            Status = ProjectStatus.Active,
+            CreatedByUserId = "manager-123"
+        });
+
+        var result = await CreateService().CreateAsync(
+            projectId,
+            new CreateTaskRequest
+            {
+                Title = "Unassigned task",
+                AssignedToUserId = "   "
+            },
+            "manager-123");
+
+        Assert.NotNull(result);
+        Assert.Null(result.AssignedToUserId);
+        Assert.Single(_tasks.AddedTasks);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShouldRejectAssigneeWhenProjectIsNotActive()
+    {
+        var projectId = Guid.NewGuid();
+        AddMember(projectId, "manager-123", ProjectMemberRole.Manager);
+        AddMember(projectId, "member-123");
+        AddGlobalRole("manager-123", "Project Manager");
+
+        _projects.AddedProjects.Add(new Project
+        {
+            Id = projectId,
+            Name = "Planning project",
+            Status = ProjectStatus.Planning,
+            CreatedByUserId = "manager-123"
+        });
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => CreateService().CreateAsync(
+                projectId,
+                new CreateTaskRequest
+                {
+                    Title = "Assigned too early",
+                    AssignedToUserId = "member-123"
+                },
+                "manager-123"));
+
+        Assert.Contains(
+            exception.Errors,
+            error =>
+                error.PropertyName == "AssignedToUserId" &&
+                error.ErrorMessage.Contains("active project", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(_tasks.AddedTasks);
     }
 
     [Fact]

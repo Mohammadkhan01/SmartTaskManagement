@@ -1,4 +1,5 @@
 using FluentValidation;
+using FluentValidation.Results;
 using SmartTask.BLL.DTOs.Tasks;
 using SmartTask.BLL.Interfaces.Repositories;
 using SmartTask.BLL.Interfaces.Services;
@@ -157,6 +158,8 @@ public class TaskService : ITaskService
             return null;
         }
 
+        request.AssignedToUserId = NormalizeAssigneeId(request.AssignedToUserId);
+
         var validationResult = await _createValidator.ValidateAsync(
             request,
             cancellationToken);
@@ -176,7 +179,7 @@ public class TaskService : ITaskService
             return null;
         }
 
-        var assignedToUserId = request.AssignedToUserId?.Trim();
+        var assignedToUserId = request.AssignedToUserId;
 
         if (assignedToUserId is not null)
         {
@@ -253,6 +256,8 @@ public class TaskService : ITaskService
             return null;
         }
 
+        request.AssignedToUserId = NormalizeAssigneeId(request.AssignedToUserId);
+
         var validationResult = await _updateValidator.ValidateAsync(
             request,
             cancellationToken);
@@ -262,7 +267,7 @@ public class TaskService : ITaskService
             throw new ValidationException(validationResult.Errors);
         }
 
-        var assignedToUserId = request.AssignedToUserId?.Trim();
+        var assignedToUserId = request.AssignedToUserId;
         var previousAssigneeId = task.AssignedToUserId;
 
         if (assignedToUserId is not null)
@@ -624,6 +629,9 @@ public class TaskService : ITaskService
                task.AssignedToUserId == userId;
     }
 
+    private static string? NormalizeAssigneeId(string? assignedToUserId) =>
+        string.IsNullOrWhiteSpace(assignedToUserId) ? null : assignedToUserId.Trim();
+
     private async Task ValidateAssigneeAsync(
         Guid projectId,
         string assignedToUserId,
@@ -637,7 +645,7 @@ public class TaskService : ITaskService
             project.IsDeleted ||
             project.Status != ProjectStatus.Active)
         {
-            throw new ValidationException(
+            throw AssigneeValidationException(
                 "Tasks can only be assigned within an active project.");
         }
 
@@ -647,7 +655,7 @@ public class TaskService : ITaskService
 
         if (account is null || !account.IsActive)
         {
-            throw new ValidationException(
+            throw AssigneeValidationException(
                 "The assigned user must exist and have an active account.");
         }
 
@@ -658,10 +666,13 @@ public class TaskService : ITaskService
 
         if (membership is null)
         {
-            throw new ValidationException(
+            throw AssigneeValidationException(
                 "The assigned user must be a member of this project.");
         }
     }
+
+    private static ValidationException AssigneeValidationException(string message) =>
+        new([new ValidationFailure(nameof(CreateTaskRequest.AssignedToUserId), message)]);
 
     private void AddAuditLog(
         string userId,

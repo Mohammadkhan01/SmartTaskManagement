@@ -26,10 +26,10 @@ public class CreateTaskRequestValidator
             .IsInEnum()
             .WithMessage("Invalid task priority.");
 
+        // Empty / whitespace IDs are normalized to null in TaskService before validation.
         RuleFor(x => x.AssignedToUserId)
             .MaximumLength(450)
-            .WithMessage("Assigned user ID cannot exceed 450 characters.")
-            .Must(id => id is null || !string.IsNullOrWhiteSpace(id))
-            .WithMessage("Assigned user ID cannot contain only whitespace.");
+            .When(x => x.AssignedToUserId is not null)
+            .WithMessage("Assigned user ID cannot exceed 450 characters.");
     }
 }

@@ -15,169 +15,218 @@ import {
   UpdateProjectRequest
 } from '../../core/projects/project.models';
 import { ProjectService } from '../../core/projects/project.service';
+import { RecentProjectsStore } from '../../core/projects/recent-projects.store';
+import { AvatarComponent } from '../../shared/ui/avatar.component';
+import { IconComponent } from '../../shared/ui/icon.component';
 
 @Component({
   selector: 'app-project-details',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [DatePipe],
-  imports: [UtcDatePipe, RouterLink, ReactiveFormsModule],
+  imports: [UtcDatePipe, RouterLink, ReactiveFormsModule, AvatarComponent, IconComponent],
   template: `
     <main class="page">
-      <header><a routerLink="/projects">← Back to projects</a></header>
+      <a class="back-link" routerLink="/projects"><app-icon name="arrowLeft" [size]="16" /> Back to projects</a>
 
       @if (loading()) {
-        <p role="status">Loading project…</p>
+        <div class="panel loading-rows" role="status">
+          <span class="sr-only">Loading project…</span>
+          <span class="skeleton title-skeleton" aria-hidden="true"></span>
+          <span class="skeleton" aria-hidden="true"></span>
+          <span class="skeleton" aria-hidden="true"></span>
+        </div>
       } @else if (error()) {
         <section class="panel">
-          <p class="error" role="alert">{{ error() }}</p>
-          <button type="button" (click)="load()">Try again</button>
+          <div class="empty-state">
+            <span class="empty-state-icon tone-danger"><app-icon name="alert" /></span>
+            <p class="error" role="alert">{{ error() }}</p>
+            <button type="button" class="btn btn-primary" (click)="load()">Try again</button>
+          </div>
         </section>
       } @else if (project(); as data) {
-        <section class="panel">
-          <div class="heading">
-            <div>
-              <p class="eyebrow">PROJECT DETAILS</p>
-              <h1>{{ data.name }}</h1>
-              <span class="status">{{ statusLabel(data.status) }}</span>
-            </div>
-            <div class="actions">
-              <a class="button" [routerLink]="['/projects', data.id, 'tasks']">View tasks</a>
-              <button type="button" class="secondary" (click)="toggleEdit()">
-                {{ editing() ? 'Cancel edit' : 'Edit project' }}
-              </button>
-              <button type="button" class="danger" [disabled]="deleting()" (click)="deleteProject()">
-                {{ deleting() ? 'Deleting…' : 'Delete project' }}
-              </button>
+        <header class="page-header">
+          <div class="title-block">
+            <app-avatar [name]="data.name" size="xl" [square]="true" />
+            <div class="title-text">
+              <div class="title-row">
+                <h1>{{ data.name }}</h1>
+                <span [class]="'pill status project-status-' + data.status">{{ statusLabel(data.status) }}</span>
+              </div>
+              <p class="page-subtitle">Created {{ data.createdAtUtc | utcDate:'mediumDate' }}</p>
             </div>
           </div>
+          <div class="page-actions">
+            <a class="btn btn-primary" [routerLink]="['/projects', data.id, 'tasks']">
+              <app-icon name="listChecks" [size]="16" /> View tasks
+            </a>
+            <button type="button" class="btn btn-secondary" [attr.aria-expanded]="editing()" (click)="toggleEdit()">
+              <app-icon name="pencil" [size]="16" />
+              {{ editing() ? 'Cancel edit' : 'Edit project' }}
+            </button>
+            <button type="button" class="btn btn-danger-ghost" [disabled]="deleting()" (click)="deleteProject()">
+              <app-icon name="trash" [size]="16" />
+              {{ deleting() ? 'Deleting…' : 'Delete project' }}
+            </button>
+          </div>
+        </header>
 
-          @if (editing()) {
-            <form [formGroup]="editForm" (ngSubmit)="save()">
-              <label for="name">Project name</label>
-              <input id="name" type="text" formControlName="name" maxlength="150">
-              @if (editForm.controls.name.touched && editForm.controls.name.invalid) {
-                <small class="error">A project name is required (maximum 150 characters).</small>
-              }
-              <label for="description">Description</label>
-              <textarea id="description" formControlName="description" rows="5" maxlength="2000"></textarea>
-              <label for="status">Status</label>
-              <select id="status" formControlName="status">
-                @for (option of statusOptions; track option.value) {
-                  <option [ngValue]="option.value">{{ option.label }}</option>
-                }
-              </select>
-              <small class="muted">Tasks can only be assigned while the project is Active.</small>
-              @if (saveError()) {
-                <p class="error" role="alert">{{ saveError() }}</p>
-              }
-              <button type="submit" [disabled]="saving() || editForm.invalid">
-                {{ saving() ? 'Saving…' : 'Save changes' }}
-              </button>
-            </form>
-          } @else {
-            <h2>Description</h2>
-            <p class="description">{{ data.description || 'No description provided.' }}</p>
-            @if (data.status !== activeStatus) {
-              <p class="hint">This project is {{ statusLabel(data.status) }}. Set it to Active to assign tasks.</p>
-            }
-          }
-
-          <dl>
-            <div><dt>Created</dt><dd>{{ data.createdAtUtc | utcDate:'medium' }}</dd></div>
-            <div><dt>Project ID</dt><dd>{{ data.id }}</dd></div>
-          </dl>
-        </section>
-
-        @if (membersAllowed()) {
-          <section class="panel">
-            <h2>Project members</h2>
-            @if (membersLoading()) {
-              <p role="status">Loading members…</p>
-            } @else {
-              @if (memberError()) {
-                <p class="error" role="alert">{{ memberError() }}</p>
-              }
-              @if (members().length === 0) {
-                <p class="muted">No members found.</p>
-              } @else {
-                <div class="member-list">
-                  @for (member of members(); track member.userId) {
-                    <div class="member">
-                      <div class="member-info">
-                        <strong>{{ member.displayName }}</strong>
-                        <span>{{ member.email }}</span>
-                        <small>{{ roleLabel(member.projectRole) }}</small>
-                      </div>
-                      <button
-                        type="button"
-                        class="danger"
-                        [disabled]="removingUserId() === member.userId"
-                        (click)="removeMember(member)">
-                        {{ removingUserId() === member.userId ? 'Removing…' : 'Remove' }}
-                      </button>
-                    </div>
+        <div class="detail-grid">
+          <div class="stack">
+            <section class="panel" aria-labelledby="overview-title">
+              <h2 id="overview-title" class="section-title">{{ editing() ? 'Edit project' : 'Overview' }}</h2>
+              @if (editing()) {
+                <form class="form" [formGroup]="editForm" (ngSubmit)="save()">
+                  <div class="field">
+                    <label for="name">Project name</label>
+                    <input id="name" type="text" formControlName="name" maxlength="150">
+                    @if (editForm.controls.name.touched && editForm.controls.name.invalid) {
+                      <small class="field-error">A project name is required (maximum 150 characters).</small>
+                    }
+                  </div>
+                  <div class="field">
+                    <label for="description">Description</label>
+                    <textarea id="description" formControlName="description" rows="5" maxlength="2000"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="status">Status</label>
+                    <select id="status" formControlName="status" aria-describedby="status-hint">
+                      @for (option of statusOptions; track option.value) {
+                        <option [ngValue]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                    <small id="status-hint" class="field-hint">Tasks can only be assigned while the project is Active.</small>
+                  </div>
+                  @if (saveError()) {
+                    <p class="alert error" role="alert">{{ saveError() }}</p>
                   }
-                </div>
-              }
-              <form [formGroup]="memberForm" (ngSubmit)="addMember()">
-                <label for="memberUserId">Add member by user ID</label>
-                <input id="memberUserId" type="text" formControlName="userId"
-                  placeholder="Enter the user's ID">
-                @if (memberForm.controls.userId.touched && memberForm.controls.userId.invalid) {
-                  <small class="error">A user ID is required.</small>
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" [disabled]="saving() || editForm.invalid">
+                      {{ saving() ? 'Saving…' : 'Save changes' }}
+                    </button>
+                    <button type="button" class="btn btn-secondary" (click)="toggleEdit()">Cancel</button>
+                  </div>
+                </form>
+              } @else {
+                <p class="description">{{ data.description || 'No description provided.' }}</p>
+                @if (data.status !== activeStatus) {
+                  <p class="hint">This project is {{ statusLabel(data.status) }}. Set it to Active to assign tasks.</p>
                 }
-                <button type="submit" [disabled]="addingMember() || memberForm.invalid">
-                  {{ addingMember() ? 'Adding…' : 'Add member' }}
-                </button>
-              </form>
+                @if (saveError()) {
+                  <p class="alert error" role="alert">{{ saveError() }}</p>
+                }
+              }
+            </section>
+
+            @if (membersAllowed()) {
+              <section class="panel" aria-labelledby="members-title">
+                <div class="panel-header">
+                  <div>
+                    <h2 id="members-title">Project members</h2>
+                    <p class="panel-meta">{{ members().length }} {{ members().length === 1 ? 'member' : 'members' }}</p>
+                  </div>
+                </div>
+                @if (membersLoading()) {
+                  <p class="muted" role="status">Loading members…</p>
+                } @else {
+                  @if (memberError()) {
+                    <p class="alert error" role="alert">{{ memberError() }}</p>
+                  }
+                  @if (members().length === 0) {
+                    <p class="muted">No members found.</p>
+                  } @else {
+                    <ul class="member-list" role="list">
+                      @for (member of members(); track member.userId) {
+                        <li class="member">
+                          <app-avatar [name]="member.displayName" />
+                          <div class="member-info">
+                            <strong>{{ member.displayName }}</strong>
+                            <span>{{ member.email }}</span>
+                          </div>
+                          <span class="pill" [class.tone-primary]="member.projectRole === managerRole"
+                            [class.tone-neutral]="member.projectRole !== managerRole">{{ roleLabel(member.projectRole) }}</span>
+                          <button type="button" class="btn btn-danger-ghost btn-sm"
+                            [disabled]="removingUserId() === member.userId"
+                            (click)="removeMember(member)">
+                            {{ removingUserId() === member.userId ? 'Removing…' : 'Remove' }}
+                            <span class="sr-only">{{ member.displayName }}</span>
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                  <form class="member-form" [formGroup]="memberForm" (ngSubmit)="addMember()">
+                    <div class="field">
+                      <label for="memberUserId">Add member by user ID</label>
+                      <div class="inline-input">
+                        <input id="memberUserId" type="text" formControlName="userId"
+                          placeholder="Enter the user's ID" aria-describedby="member-hint">
+                        <button type="submit" class="btn btn-primary" [disabled]="addingMember() || memberForm.invalid">
+                          <app-icon name="userPlus" [size]="16" />
+                          {{ addingMember() ? 'Adding…' : 'Add member' }}
+                        </button>
+                      </div>
+                      @if (memberForm.controls.userId.touched && memberForm.controls.userId.invalid) {
+                        <small class="field-error">A user ID is required.</small>
+                      }
+                      <small id="member-hint" class="field-hint">User IDs are listed on the administrator's Users page.</small>
+                    </div>
+                  </form>
+                }
+              </section>
+            } @else if (membersChecked()) {
+              <section class="panel" aria-labelledby="members-title">
+                <h2 id="members-title" class="section-title">Project members</h2>
+                <p class="muted">You do not have permission to manage this project's members.</p>
+              </section>
             }
-          </section>
-        } @else if (membersChecked()) {
-          <section class="panel">
-            <h2>Project members</h2>
-            <p class="muted">You do not have permission to manage this project's members.</p>
-          </section>
-        }
+          </div>
+
+          <aside class="stack" aria-label="Project summary">
+            <section class="panel" aria-labelledby="tasks-title">
+              <h2 id="tasks-title" class="section-title">Tasks</h2>
+              <p class="muted">Create, assign and track this project's work from its task list.</p>
+              <a class="btn btn-secondary btn-block open-tasks" [routerLink]="['/projects', data.id, 'tasks']">
+                Open task list <app-icon name="chevronRight" [size]="16" />
+              </a>
+            </section>
+            <section class="panel" aria-labelledby="details-title">
+              <h2 id="details-title" class="section-title">Details</h2>
+              <dl class="detail-list">
+                <div><dt>Created</dt><dd>{{ data.createdAtUtc | utcDate:'medium' }}</dd></div>
+                <div><dt>Project ID</dt><dd><code>{{ data.id }}</code></dd></div>
+              </dl>
+            </section>
+          </aside>
+        </div>
       }
     </main>
   `,
   styles: [`
-    :host { display:block; min-height:100vh; background:#f4f6fa; }
-    .page { max-width:900px; margin:auto; padding:32px 24px; }
-    a { color:#1d4ed8; text-decoration:none; font-size:14px; }
-    .panel { margin-top:24px; padding:28px; background:white; border:1px solid #e5eaf1; border-radius:12px; }
-    .heading { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
-    .eyebrow { color:#64748b; font-size:11px; font-weight:700; letter-spacing:1.2px; }
-    h1 { margin:8px 0 14px; font-size:30px; }
-    h2 { margin:12px 0 20px; font-size:19px; }
-    .status { display:inline-block; padding:5px 10px; border-radius:20px; background:#dbeafe; color:#1d4ed8; font-size:12px; }
-    .description { color:#475569; line-height:1.6; white-space:pre-wrap; }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    form { display:grid; gap:10px; margin-top:24px; }
-    label { margin-top:10px; font-size:13px; font-weight:600; }
-    input, textarea, select { width:100%; padding:11px; border:1px solid #cbd5e1; border-radius:7px; font:inherit; }
-    dl { margin-top:28px; }
-    dl div { display:grid; grid-template-columns:140px 1fr; gap:12px; padding:12px 0; border-top:1px solid #edf0f4; }
-    dt { color:#64748b; font-size:13px; }
-    dd { margin:0; font-size:13px; overflow-wrap:anywhere; }
-    .error { color:#b91c1c; }
-    .muted { color:#64748b; font-size:14px; }
-    .hint { padding:10px 12px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:13px; }
-    a.button { display:inline-block; border-radius:8px; padding:10px 16px; background:#1d4ed8; color:white; font-size:inherit; }
-    button { border:0; border-radius:8px; padding:10px 16px; background:#1d4ed8; color:white; cursor:pointer; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-    button.secondary { background:#e2e8f0; color:#1e293b; }
-    button.danger { background:#b91c1c; }
-    .member-list { display:grid; }
-    .member { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 0; border-top:1px solid #edf0f4; }
-    .member-info { display:grid; gap:4px; min-width:0; }
-    .member-info strong { font-size:14px; }
-    .member-info span, .member-info small { color:#64748b; font-size:12px; overflow-wrap:anywhere; }
-    @media (max-width:650px) {
-      .heading { flex-direction:column; }
-      .member { align-items:flex-start; }
-      dl div { grid-template-columns:100px 1fr; }
+    :host { display:block; }
+    .title-skeleton { width:40%; height:28px; }
+    .title-block { display:flex; align-items:center; gap:16px; min-width:0; }
+    .title-text { min-width:0; }
+    .title-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+    .title-row h1 { overflow-wrap:anywhere; }
+    .detail-grid { display:grid; grid-template-columns:minmax(0,1fr) 320px; align-items:start; gap:20px; }
+    .section-title { margin-bottom:14px; }
+    .description { max-width:70ch; color:var(--c-text-2); line-height:1.65; white-space:pre-wrap; }
+    .description ~ .hint, .description ~ .alert { margin-top:16px; }
+    .member-list { margin:0 -24px; padding:0; list-style:none; border-top:1px solid var(--c-line); }
+    .member { display:flex; align-items:center; gap:12px; padding:12px 24px; border-bottom:1px solid var(--c-line); }
+    .member-info { display:grid; flex:1; min-width:0; }
+    .member-info span { color:var(--c-muted); font-size:var(--text-sm); overflow-wrap:anywhere; }
+    .member-form { margin-top:20px; }
+    .inline-input { display:flex; gap:8px; }
+    .open-tasks { margin-top:16px; }
+    .detail-list code { color:var(--c-text-2); }
+    @media (max-width:960px) { .detail-grid { grid-template-columns:minmax(0,1fr); } }
+    @media (max-width:640px) {
+      .title-block app-avatar { display:none; }
+      .member-list { margin:0 -16px; }
+      .member { flex-wrap:wrap; padding:12px 16px; }
+      .inline-input { flex-direction:column; }
     }
   `]
 })
@@ -185,6 +234,7 @@ export class ProjectDetailsComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly service = inject(ProjectService);
+  private readonly recent = inject(RecentProjectsStore);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -211,6 +261,7 @@ export class ProjectDetailsComponent {
   });
 
   readonly activeStatus = ProjectStatus.Active;
+  readonly managerRole = ProjectMemberRole.Manager;
   readonly statusOptions = Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => ({
     value: Number(value) as ProjectStatus,
     label
@@ -239,6 +290,7 @@ export class ProjectDetailsComponent {
     this.service.getProject(this.projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: result => {
         this.project.set(result);
+        this.recent.remember(result);
         this.loading.set(false);
         this.loadMembers();
       },
@@ -322,6 +374,7 @@ export class ProjectDetailsComponent {
     this.service.updateProject(this.projectId, request).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: updated => {
         this.project.set(updated);
+        this.recent.remember(updated);
         this.editing.set(false);
         this.saving.set(false);
       },
@@ -344,9 +397,13 @@ export class ProjectDetailsComponent {
     if (!this.projectId || this.deleting()) return;
     if (!window.confirm('Delete this project? This action cannot be undone.')) return;
 
+    const projectId = this.projectId;
     this.deleting.set(true);
-    this.service.deleteProject(this.projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () => this.router.navigate(['/projects']),
+    this.service.deleteProject(projectId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.recent.forget(projectId);
+        void this.router.navigate(['/projects']);
+      },
       error: (error: unknown) => {
         this.deleting.set(false);
         this.saveError.set(

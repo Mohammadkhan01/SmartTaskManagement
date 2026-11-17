@@ -49,6 +49,34 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task TryHandleAsync_ValidationException_WithEmptyPropertyName_MapsToRequest()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        var exception = new ValidationException(
+            "Tasks can only be assigned within an active project.");
+
+        var handled = await CreateHandler().TryHandleAsync(
+            context,
+            exception,
+            CancellationToken.None);
+
+        context.Response.Body.Position = 0;
+
+        using var reader = new StreamReader(context.Response.Body);
+        var response = await reader.ReadToEndAsync();
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Contains("request", response);
+        Assert.Contains(
+            "Tasks can only be assigned within an active project.",
+            response);
+        Assert.DoesNotContain("\"errors\":{}", response);
+    }
+
+    [Fact]
     public async Task TryHandleAsync_ArgumentException_Returns400()
     {
         var context = new DefaultHttpContext();

@@ -82,6 +82,9 @@ describe('DashboardComponent', () => {
     Array.from(element.querySelectorAll('section.panel'))
       .find(s => s.querySelector('h2')?.textContent?.trim() === heading)!;
 
+  const tags = (task: Element) =>
+    Array.from(task.querySelectorAll('.task-tags > *')).map(tag => tag.textContent?.trim());
+
   const chips = (container: Element) =>
     Object.fromEntries(Array.from(container.querySelectorAll('.status-chip')).map(chip => [
       chip.querySelector('span')?.textContent?.trim(),
@@ -177,15 +180,17 @@ describe('DashboardComponent', () => {
     create();
     flush();
 
+    expect(panel('Tasks by status').querySelector('.ring-value')?.textContent).toContain('25%');
     const recent = panel('Recent tasks');
-    expect(recent.textContent).toContain('25% complete');
     const tasks = recent.querySelectorAll('.task');
     expect(tasks).toHaveLength(2);
-    expect(tasks[0].textContent).toContain('In progress · Critical');
+    expect(tags(tasks[0])).toEqual(['In progress', 'Critical']);
     expect(tasks[0].querySelector('time')?.textContent).toContain('Mar 4, 2026');
+    expect(tasks[0].querySelector('.due')?.getAttribute('data-state')).toBe('overdue');
     expect(tasks[0].querySelector('a')?.getAttribute('href')).toBe('/tasks/t1');
-    expect(tasks[1].textContent).toContain('To do · Low');
+    expect(tags(tasks[1])).toEqual(['To do', 'Low']);
     expect(tasks[1].querySelector('time')?.textContent).toContain('No due date');
+    expect(tasks[1].querySelector('.due')?.getAttribute('data-state')).toBe('none');
   });
 
   it('renders upcoming tasks', () => {
@@ -196,7 +201,7 @@ describe('DashboardComponent', () => {
     const tasks = upcoming.querySelectorAll('.task');
     expect(tasks).toHaveLength(1);
     expect(tasks[0].textContent).toContain('Release v2');
-    expect(tasks[0].textContent).toContain('To do · High');
+    expect(tags(tasks[0])).toEqual(['To do', 'High']);
     expect(tasks[0].querySelector('time')?.textContent).toContain('Apr 1, 2026');
     expect(tasks[0].querySelector('a')?.getAttribute('href')).toBe('/tasks/t3');
   });
